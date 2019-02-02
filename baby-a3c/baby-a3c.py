@@ -82,7 +82,8 @@ def cost_func(args, values, logps, actions, rewards):
 
     # generalized advantage estimation using \delta_t residuals (a policy gradient method)
     delta_t = np.asarray(rewards) + args.gamma * np_values[1:] - np_values[:-1]
-    logpys = logps.gather(1, torch.tensor(actions).view(-1,1))
+    #  logpys = logps.gather(1, torch.tensor(actions).view(-1,1))
+    logpys = logps.gather(1, actions.clone().detach().view(-1,1))
     gen_adv_est = discount(delta_t, args.gamma * args.tau)
     policy_loss = -(logpys.view(-1) * torch.FloatTensor(gen_adv_est.copy())).sum()
     

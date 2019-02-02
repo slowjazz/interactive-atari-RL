@@ -24,14 +24,16 @@ def get_args():
     parser.add_argument('--horizon', default=0.99, type=float, help='horizon for running averages')
     parser.add_argument('--hidden', default=256, type=int, help='hidden size of GRU')
     parser.add_argument('--load_model', default='', type=str, help='name of model to be trained or continue training')
+    parser.add_argument('--frame_limit', default=80.0, type=float, help = 'max num of frames to train over in M')
     return parser.parse_args()
 
 discount = lambda x, gamma: lfilter([1],[1,-gamma],x[::-1])[::-1] # discounted rewards one liner
 prepro = lambda img: imresize(img[35:195].mean(2), (80,80)).astype(np.float32).reshape(1,80,80)/255.
 
 def printlog(args, s, end='\n', mode='a'):
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    print(s, end=end) ; f=open(args.save_dir+'log-'+args.load_model+'-'+now+'.txt',mode) ; f.write(s+'\n') ; f.close()
+    print(s, end=end)
+    f=open(args.save_dir+'log-'+args.load_model+'-'+args.now+'.txt',mode) 
+    f.write(s+'\n') ; f.close()
 
 class NNPolicy(nn.Module): # an actor-critic neural network
     def __init__(self, channels, memsize, num_actions):
@@ -54,9 +56,9 @@ class NNPolicy(nn.Module): # an actor-critic neural network
 
     def try_load(self, save_dir):
         step = 0
-        if not args.load_model:
+        if not args.load_model: # train from furthest model if no new-name specified
             paths = glob.glob(save_dir + '*.tar') 
-        else: paths = []
+        else: paths = glob.glob(save_dir + args.load_model + '.tar')
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
             ix = np.argmax(ckpts) ; step = ckpts[ix]
@@ -110,7 +112,7 @@ def train(shared_model, shared_optimizer, rank, args, info):
     start_time = last_disp_time = time.time()
     episode_length, epr, eploss, done  = 0, 0, 0, True # bookkeeping
 
-    while info['frames'][0] <= 8e7 or args.test: # openai baselines uses 40M frames...we'll use 80M
+    while info['frames'][0] <= max(8e7, args.frame_limit * 1e6) or args.test: # openai baselines uses 40M frames...we'll use 80M
         model.load_state_dict(shared_model.state_dict()) # sync with shared model
 
         hx = torch.zeros(1, 256) if done else hx.detach()  # rnn activation vector
@@ -173,6 +175,7 @@ if __name__ == "__main__":
         raise "Must be using Python 3 with linux!" # or else you get a deadlock in conv2d
     
     args = get_args()
+    args.now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     args.save_dir = '{}/'.format(args.env.lower()) # keep the directory structure simple
     if args.render:  args.processes = 1 ; args.test = True # render mode -> test mode w one process
     if args.test:  args.lr = 0 # don't train in render mode

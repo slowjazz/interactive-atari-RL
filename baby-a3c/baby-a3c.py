@@ -1,7 +1,7 @@
 # Baby Advantage Actor-Critic | Sam Greydanus | October 2017 | MIT License
 
 from __future__ import print_function
-import torch, os, gym, time, glob, argparse, sys
+import torch, os, gym, time, glob, argparse, sys, datetime
 import numpy as np
 from scipy.signal import lfilter
 from scipy.misc import imresize # preserves single-pixel info _unlike_ img = img[::2,::2]
@@ -23,13 +23,15 @@ def get_args():
     parser.add_argument('--tau', default=1.0, type=float, help='generalized advantage estimation discount')
     parser.add_argument('--horizon', default=0.99, type=float, help='horizon for running averages')
     parser.add_argument('--hidden', default=256, type=int, help='hidden size of GRU')
+    parser.add_argument('--load_model', default='', type=str, help='name of model to be trained or continue training')
     return parser.parse_args()
 
 discount = lambda x, gamma: lfilter([1],[1,-gamma],x[::-1])[::-1] # discounted rewards one liner
 prepro = lambda img: imresize(img[35:195].mean(2), (80,80)).astype(np.float32).reshape(1,80,80)/255.
 
 def printlog(args, s, end='\n', mode='a'):
-    print(s, end=end) ; f=open(args.save_dir+'log.txt',mode) ; f.write(s+'\n') ; f.close()
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    print(s, end=end) ; f=open(args.save_dir+'log-'+args.load_model+'-'+now+'.txt',mode) ; f.write(s+'\n') ; f.close()
 
 class NNPolicy(nn.Module): # an actor-critic neural network
     def __init__(self, channels, memsize, num_actions):
@@ -51,7 +53,9 @@ class NNPolicy(nn.Module): # an actor-critic neural network
         return self.critic_linear(hx), self.actor_linear(hx), hx
 
     def try_load(self, save_dir):
-        paths = glob.glob(save_dir + '*.tar') ; step = 0
+        step = 0
+        if not args.load_model:
+            paths = glob.glob(save_dir + '*.tar') 
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
             ix = np.argmax(ckpts) ; step = ckpts[ix]
@@ -127,7 +131,7 @@ def train(shared_model, shared_optimizer, rank, args, info):
             info['frames'].add_(1) ; num_frames = int(info['frames'].item())
             if num_frames % 2e6 == 0: # save every 2M frames
                 printlog(args, '\n\t{:.0f}M frames: saved model\n'.format(num_frames/1e6))
-                torch.save(shared_model.state_dict(), args.save_dir+'model.{:.0f}.tar'.format(num_frames/1e6))
+                torch.save(shared_model.state_dict(), args.save_dir+args.load_model+'.{:.0f}.tar'.format(num_frames/1e6))
 
             if done: # update shared data
                 info['episodes'] += 1

@@ -56,6 +56,7 @@ class NNPolicy(nn.Module): # an actor-critic neural network
         step = 0
         if not args.load_model:
             paths = glob.glob(save_dir + '*.tar') 
+        else: paths = []
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
             ix = np.argmax(ckpts) ; step = ckpts[ix]
@@ -131,6 +132,7 @@ def train(shared_model, shared_optimizer, rank, args, info):
             info['frames'].add_(1) ; num_frames = int(info['frames'].item())
             if num_frames % 2e6 == 0: # save every 2M frames
                 printlog(args, '\n\t{:.0f}M frames: saved model\n'.format(num_frames/1e6))
+                print("frames played: ", num_frames)
                 torch.save(shared_model.state_dict(), args.save_dir+args.load_model+'.{:.0f}.tar'.format(num_frames/1e6))
 
             if done: # update shared data

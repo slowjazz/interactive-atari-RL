@@ -112,7 +112,7 @@ def train(shared_model, shared_optimizer, rank, args, info):
     start_time = last_disp_time = time.time()
     episode_length, epr, eploss, done  = 0, 0, 0, True # bookkeeping
 
-    while info['frames'][0] <= max(8e7, args.frame_limit * 1e6) or args.test: # openai baselines uses 40M frames...we'll use 80M
+    while info['frames'][0] <= min(8e7, args.frame_limit * 1e6) or args.test: # openai baselines uses 40M frames...we'll use 80M
         model.load_state_dict(shared_model.state_dict()) # sync with shared model
 
         hx = torch.zeros(1, 256) if done else hx.detach()  # rnn activation vector
@@ -133,7 +133,7 @@ def train(shared_model, shared_optimizer, rank, args, info):
             
             info['frames'].add_(1) ; num_frames = int(info['frames'].item())
             if num_frames % 2e6 == 0: # save every 2M frames
-                printlog(args, '\n\t{:.0f}M frames: saved model\n'.format(num_frames/1e6))
+                #printlog(args, '\n\t{:.0f}M frames: saved model\n'.format(num_frames/1e6))
                 print("frames played: ", num_frames)
                 torch.save(shared_model.state_dict(), args.save_dir+args.load_model+'.{:.0f}.tar'.format(num_frames/1e6))
 
@@ -142,12 +142,15 @@ def train(shared_model, shared_optimizer, rank, args, info):
                 interp = 1 if info['episodes'][0] == 1 else 1 - args.horizon
                 info['run_epr'].mul_(1-interp).add_(interp * epr)
                 info['run_loss'].mul_(1-interp).add_(interp * eploss)
-
-            if rank == 0 and time.time() - last_disp_time > 60: # print info ~ every minute
+                        
+            if num_frames % 1000 ==0 or (rank == 0 and time.time() - last_disp_time > 60): # print info ~ every minute or every 1000 frames
                 elapsed = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
-                printlog(args, 'time {}, episodes {:.0f}, frames {:.1f}M, mean epr {:.2f}, run loss {:.2f}'
-                    .format(elapsed, info['episodes'].item(), num_frames/1e6,
-                    info['run_epr'].item(), info['run_loss'].item()))
+                s = 'time {}, episodes {:.0f}, frames {:.0f}, mean epr {:.2f}, run loss {:.2f}'\
+                    .format(elapsed, info['episodes'].item(), num_frames,
+                    info['run_epr'].item(), info['run_loss'].item())
+                if num_frames %1000== 0:    
+                    printlog(args, s)
+                else: print(s)
                 last_disp_time = time.time()
 
             if done: # maybe print info.

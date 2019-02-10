@@ -27,12 +27,13 @@ def get_args():
     parser.add_argument('--frame_limit', default=80.0, type=float, help = 'max num of frames to train over in M')
     return parser.parse_args()
 
+modelName = ""
 discount = lambda x, gamma: lfilter([1],[1,-gamma],x[::-1])[::-1] # discounted rewards one liner
 prepro = lambda img: imresize(img[35:195].mean(2), (80,80)).astype(np.float32).reshape(1,80,80)/255.
 
 def printlog(args, s, end='\n', mode='a'):
     print(s, end=end)
-    f=open(args.save_dir+'log-'+args.load_model+'-'+args.now+'.txt',mode) 
+    f=open(args.save_dir+'log-'+modelName+'.txt',mode) 
     f.write(s+'\n') ; f.close()
 
 class NNPolicy(nn.Module): # an actor-critic neural network
@@ -58,13 +59,18 @@ class NNPolicy(nn.Module): # an actor-critic neural network
         step = 0
         if not args.load_model: # train from furthest model if no new-name specified
             paths = glob.glob(save_dir + '*.tar') 
-        else: paths = glob.glob(save_dir + args.load_model + '.tar')
+        else: paths = glob.glob(save_dir + args.load_model + '*.tar')
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
             ix = np.argmax(ckpts) ; step = ckpts[ix]
             self.load_state_dict(torch.load(paths[ix]))
-        print("\tno saved models") if step is 0 else print("\tloaded model: {}".format(paths[ix]))
-        return step
+        if step is 0:
+            print("\tno saved models, created: ", args.load_model + args.now)
+            return 0, args.load_model + args.now
+        else:
+            print("\tloaded model: {}".format(paths[ix]))
+            return step, paths[ix]
+      
 
 class SharedAdam(torch.optim.Adam): # extend a pytorch optimizer so it shares grads across processes
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
@@ -143,12 +149,12 @@ def train(shared_model, shared_optimizer, rank, args, info):
                 info['run_epr'].mul_(1-interp).add_(interp * epr)
                 info['run_loss'].mul_(1-interp).add_(interp * eploss)
                         
-            if num_frames % 1000 ==0 or (rank == 0 and time.time() - last_disp_time > 60): # print info ~ every minute or every 1000 frames
-                elapsed = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
-                s = 'time {}, episodes {:.0f}, frames {:.0f}, mean epr {:.2f}, run loss {:.2f}'\
+            if num_frames % 10000 ==0 or (rank == 0 and time.time() - last_disp_time > 60): # print info ~ every minute or every 10000 frames
+                elapsed = time.strftime("%Hh-%Mm-%Ss", time.gmtime(time.time() - start_time))
+                s = 'time {}, episodes {:.0f}, frames {:.0f}, mean-epr {:.2f}, run-loss {:.2f}'\
                     .format(elapsed, info['episodes'].item(), num_frames,
                     info['run_epr'].item(), info['run_loss'].item())
-                if num_frames %1000== 0:    
+                if num_frames %10000== 0:   #log every x frames
                     printlog(args, s)
                 else: print(s)
                 last_disp_time = time.time()
@@ -190,8 +196,11 @@ if __name__ == "__main__":
     shared_optimizer = SharedAdam(shared_model.parameters(), lr=args.lr)
 
     info = {k: torch.DoubleTensor([0]).share_memory_() for k in ['run_epr', 'run_loss', 'episodes', 'frames']}
-    info['frames'] += shared_model.try_load(args.save_dir) * 1e6
-    if int(info['frames'].item()) == 0: printlog(args,'', end='', mode='w') # clear log file
+    addSteps, modelName = shared_model.try_load(args.save_dir)
+    info['frames'] += addSteps * 1e6
+    if int(info['frames'].item()) == 0: 
+        print('training model: ', modelName)
+        printlog(args, '', end='', mode='w') # clear log file
     
     processes = []
     for rank in range(args.processes):

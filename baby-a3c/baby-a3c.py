@@ -178,7 +178,7 @@ if __name__ == "__main__":
         raise "Must be using Python 3 with linux!" # or else you get a deadlock in conv2d
     
     args = get_args()
-    args.now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    args.now = datetime.datetime.now().strftime("%m-%d-%H-%M")
     args.save_dir = '{}/'.format(args.env.lower()) # keep the directory structure simple
     if args.render:  args.processes = 1 ; args.test = True # render mode -> test mode w one process
     if args.test:  args.lr = 0 # don't train in render mode

@@ -27,11 +27,10 @@ def get_args():
     parser.add_argument('--frame_limit', default=80.0, type=float, help = 'max num of frames to train over in M')
     return parser.parse_args()
 
-modelName = ""
 discount = lambda x, gamma: lfilter([1],[1,-gamma],x[::-1])[::-1] # discounted rewards one liner
 prepro = lambda img: imresize(img[35:195].mean(2), (80,80)).astype(np.float32).reshape(1,80,80)/255.
 
-def printlog(args, s, end='\n', mode='a'):
+def printlog(args,modelName, s, end='\n', mode='a'):
     print(s, end=end)
     f=open(args.save_dir+'log-'+modelName+'.txt',mode) 
     f.write(s+'\n') ; f.close()
@@ -66,7 +65,7 @@ class NNPolicy(nn.Module): # an actor-critic neural network
             self.load_state_dict(torch.load(paths[ix]))
         if step is 0:
             print("\tno saved models, created: ", args.load_model + args.now)
-            return 0, args.load_model + args.now
+            return 0, args.load_model + '-'+args.now
         else:
             print("\tloaded model: {}".format(paths[ix]))
             return step, paths[ix]
@@ -149,13 +148,13 @@ def train(shared_model, shared_optimizer, rank, args, info):
                 info['run_epr'].mul_(1-interp).add_(interp * epr)
                 info['run_loss'].mul_(1-interp).add_(interp * eploss)
                         
-            if num_frames % 10000 ==0 or (rank == 0 and time.time() - last_disp_time > 60): # print info ~ every minute or every 10000 frames
+            if num_frames % 10000 ==0 or (rank == 0 and time.time() - last_disp_time > 60): # print info ~ every minute or every x frames
                 elapsed = time.strftime("%Hh-%Mm-%Ss", time.gmtime(time.time() - start_time))
-                s = 'time {}, episodes {:.0f}, frames {:.0f}, mean-epr {:.2f}, run-loss {:.2f}'\
+                s = '{}, {:.0f}, {:.0f}, {:.2f}, {:.2f}'\
                     .format(elapsed, info['episodes'].item(), num_frames,
                     info['run_epr'].item(), info['run_loss'].item())
                 if num_frames %10000== 0:   #log every x frames
-                    printlog(args, s)
+                    printlog(args, info['modelName'], s)
                 else: print(s)
                 last_disp_time = time.time()
 
@@ -198,9 +197,11 @@ if __name__ == "__main__":
     info = {k: torch.DoubleTensor([0]).share_memory_() for k in ['run_epr', 'run_loss', 'episodes', 'frames']}
     addSteps, modelName = shared_model.try_load(args.save_dir)
     info['frames'] += addSteps * 1e6
+    info['modelName'] = modelName
     if int(info['frames'].item()) == 0: 
         print('training model: ', modelName)
-        printlog(args, '', end='', mode='w') # clear log file
+        header = "time, episodes, frames, mean-epr, run-loss"
+        printlog(args, modelName, header, end='\n', mode='w') # clear log file
     
     processes = []
     for rank in range(args.processes):

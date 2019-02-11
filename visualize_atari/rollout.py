@@ -18,12 +18,16 @@ def rollout(model, env, max_ep_len=3e3, render=False):
     
     state = torch.Tensor(prepro(env.reset())) # get first state
     episode_length, epr, eploss, done  = 0, 0, 0, False # bookkeeping
-    hx, cx = Variable(torch.zeros(1, 256)), Variable(torch.zeros(1, 256))
+    #hx, cx = Variable(torch.zeros(1, 256)), Variable(torch.zeros(1, 256))
+    hx = Variable(torch.zeros(1, 256))
 
     while not done and episode_length <= max_ep_len:
         episode_length += 1
-        value, logit, (hx, cx) = model((Variable(state.view(1,1,80,80)), (hx, cx)))
-        hx, cx = Variable(hx.data), Variable(cx.data)
+        #value, logit, (hx, cx) = model((Variable(state.view(1,1,80,80)), (hx, cx)))
+        #hx, cx = Variable(hx.data), Variable(cx.data)
+        value, logit, hx = model((Variable(state.view(1,1,80,80)), hx))
+        #hx, cx = Variable(hx.data), Variable(cx.data)
+        
         prob = F.softmax(logit)
 
         action = prob.max(1)[1].data # prob.multinomial().data[0] # 
@@ -34,7 +38,7 @@ def rollout(model, env, max_ep_len=3e3, render=False):
         # save info!
         history['ins'].append(obs)
         history['hx'].append(hx.squeeze(0).data.numpy())
-        history['cx'].append(cx.squeeze(0).data.numpy())
+        #history['cx'].append(cx.squeeze(0).data.numpy())
         history['logits'].append(logit.data.numpy()[0])
         history['values'].append(value.data.numpy()[0])
         history['outs'].append(prob.data.numpy()[0])

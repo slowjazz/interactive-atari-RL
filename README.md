@@ -20,7 +20,7 @@ python app.py # localhost:8050
 To train a new model:
 ```
 cd baby-a3c
-python baby-a3c --load_model <model name> 
+python baby-a3c.py --load_model <model name> 
 ```
 
 To get saliency maps:

@@ -3,6 +3,7 @@
 from __future__ import print_function
 import torch, os, gym, time, glob, argparse, sys, datetime
 import numpy as np
+import h5py 
 from scipy.signal import lfilter
 from scipy.misc import imresize # preserves single-pixel info _unlike_ img = img[::2,::2]
 import torch.nn as nn
@@ -137,10 +138,10 @@ def train(shared_model, shared_optimizer, rank, args, info):
             done = done or episode_length >= 1e4 # don't playing one ep for too long
             
             info['frames'].add_(1) ; num_frames = int(info['frames'].item())
-            if num_frames % 2e6 == 0: # save every 2M frames
+            if num_frames % 5e5 == 0: # save every 500k frames
                 #printlog(args, '\n\t{:.0f}M frames: saved model\n'.format(num_frames/1e6))
                 print("frames played: ", num_frames)
-                torch.save(shared_model.state_dict(), args.save_dir+args.load_model+'.{:.0f}.tar'.format(num_frames/1e6))
+                torch.save(shared_model.state_dict(), os.path.join(args.save_dir,"models_"+info['modelName'],'_v.{:.0f}.tar'.format(num_frames/5e5)))
 
             if done: # update shared data
                 info['episodes'] += 1

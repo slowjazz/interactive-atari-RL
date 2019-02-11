@@ -31,9 +31,10 @@ def run_through_model(model, history, ix, interp_func=None, mask=None, blur_memo
     tens_state = torch.Tensor(im)
     state = Variable(tens_state.unsqueeze(0), volatile=True)
     hx = Variable(torch.Tensor(history['hx'][ix-1]).view(1,-1))
-    cx = Variable(torch.Tensor(history['cx'][ix-1]).view(1,-1))
-    if blur_memory is not None: cx.mul_(1-blur_memory) # perturb memory vector
-    return model((state, (hx, cx)))[0] if mode == 'critic' else model((state, (hx, cx)))[1]
+    #cx = Variable(torch.Tensor(history['cx'][ix-1]).view(1,-1))
+    #if blur_memory is not None: cx.mul_(1-blur_memory) # perturb memory vector
+    #return model((state, (hx, cx)))[0] if mode == 'critic' else model((state, (hx, cx)))[1]
+    return model((state, hx))[0] if mode == 'critic' else model((state, hx))[1]
 
 def score_frame(model, history, ix, r, d, interp_func, mode='actor'):
     # r: radius of blur
@@ -41,12 +42,14 @@ def score_frame(model, history, ix, r, d, interp_func, mode='actor'):
     #    if d==2 then every other, which is 25% of total pixels for a 2D image)
     assert mode in ['actor', 'critic'], 'mode must be either "actor" or "critic"'
     L = run_through_model(model, history, ix, interp_func, mask=None, mode=mode)
+    print(L)
     scores = np.zeros((int(80/d)+1,int(80/d)+1)) # saliency scores S(t,i,j)
     for i in range(0,80,d):
         for j in range(0,80,d):
             mask = get_mask(center=[i,j], size=[80,80], r=r)
             l = run_through_model(model, history, ix, interp_func, mask=mask, mode=mode)
-            scores[int(i/d),int(j/d)] = (L-l).pow(2).sum().mul_(.5).data[0]
+            #scores[int(i/d),int(j/d)] = (L-l).pow(2).sum().mul_(.5).data[0]
+            scores[int(i/d),int(j/d)] = (L-l).pow(2).sum().mul_(.5).item()
     pmax = scores.max()
     scores = imresize(scores, size=[80,80], interp='bilinear').astype(np.float32)
     return pmax * scores / scores.max()

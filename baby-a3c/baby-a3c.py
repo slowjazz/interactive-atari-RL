@@ -141,7 +141,7 @@ def train(shared_model, shared_optimizer, rank, args, info):
             if num_frames % 5e5 == 0: # save every 500k frames
                 #printlog(args, '\n\t{:.0f}M frames: saved model\n'.format(num_frames/1e6))
                 print("frames played: ", num_frames)
-                torch.save(shared_model.state_dict(), os.path.join(args.save_dir,"models_"+info['modelName'],'_v.{:.0f}.tar'.format(num_frames/5e5)))
+                torch.save(shared_model.state_dict(), os.path.join(args.model_dir,'model.{:.0f}.tar'.format(num_frames/5e5)))
 
             if done: # update shared data
                 info['episodes'] += 1
@@ -203,6 +203,8 @@ if __name__ == "__main__":
         print('training model: ', modelName)
         header = "time, episodes, frames, mean-epr, run-loss"
         printlog(args, modelName, header, end='\n', mode='w') # clear log file
+    args.model_dir = os.path.join(args.save_dir,"models_"+info['modelName'])
+    os.makedirs(args.model_dir) if not os.path.exists(args.model_dir) else None
     
     processes = []
     for rank in range(args.processes):

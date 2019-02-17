@@ -59,7 +59,11 @@ class NNPolicy(nn.Module): # an actor-critic neural network
         step = 0
         if not args.load_model: # train from furthest model if no new-name specified
             paths = glob.glob(save_dir + '*.tar') 
-        else: paths = glob.glob(save_dir + args.load_model + '*.tar')
+        else: 
+            #paths = glob.glob(save_dir + args.load_model + '*.tar')
+            model_dir = list(filter(lambda k: args.load_model in k,
+                                [x[0] for x in os.walk(save_dir)]))
+            paths = glob.glob(model_dir[0]+'/*.tar')
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
             ix = np.argmax(ckpts) ; step = ckpts[ix]
@@ -69,7 +73,7 @@ class NNPolicy(nn.Module): # an actor-critic neural network
             return 0, args.load_model + '-'+args.now
         else:
             print("\tloaded model: {}".format(paths[ix]))
-            return step, paths[ix]
+            return step, paths[ix].split('/')[-2][7:] # get orig model name 
       
 
 class SharedAdam(torch.optim.Adam): # extend a pytorch optimizer so it shares grads across processes
@@ -197,12 +201,18 @@ if __name__ == "__main__":
 
     info = {k: torch.DoubleTensor([0]).share_memory_() for k in ['run_epr', 'run_loss', 'episodes', 'frames']}
     addSteps, modelName = shared_model.try_load(args.save_dir)
-    info['frames'] += addSteps * 1e6
+    info['frames'] += addSteps * 5e5
     info['modelName'] = modelName
     if int(info['frames'].item()) == 0: 
         print('training model: ', modelName)
         header = "time, episodes, frames, mean-epr, run-loss"
         printlog(args, modelName, header, end='\n', mode='w') # clear log file
+    else:
+        # get last episode in training 
+        log_file = open(args.save_dir+'log-'+modelName+'.txt','r')
+        last = log_file.readlines()[-1]
+        log_file.close()
+        info['episodes'] += int(last.split(',')[1])
     args.model_dir = os.path.join(args.save_dir,"models_"+info['modelName'])
     os.makedirs(args.model_dir) if not os.path.exists(args.model_dir) else None
     

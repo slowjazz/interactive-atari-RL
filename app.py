@@ -6,6 +6,8 @@ from dash.dependencies import Input, Output
 import pandas as pd
 import plotly.graph_objs as go
 import plotly.plotly as py
+import h5py
+import numpy as np
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -40,6 +42,7 @@ app.layout = html.Div(children=[
                   )
         ])
     ], style={'padding-bottom':'20px'}),
+    html.Div(id = 'screen-ins'),
     html.Div(children=[dcc.Graph(
                            id='mean-epr_over_eps',
                            figure={
@@ -93,6 +96,22 @@ def update_frame_slider(input_value):
 def update_snapshot_slider(input_value):
     return 'Model iteration (500k frame increments): {}'.format(input_value)
 
+@app.callback(
+    Output(component_id='screen-ins', component_property='children'),
+    [Input(component_id='frame-slider', component_property='value'),
+     Input('snapshot-slider', 'value')]
+)
+def update_frame_in_slider(frame, snapshot):
+    # fetch frame based on snapshot and frame
+    store = h5py.File('visualize_atari/model_rollouts.h5', 'r')
+    dest = list(store.keys())[0] # just take first find here- clean later 
+    dest += '/model.' + str(snapshot) + '.tar/history/ins'
+    if frame >= len(store[dest]):
+        target = np.array(shape=(210, 160, 3))
+    else:
+        target = store[dest][frame]
+    store.close()
+    return 'target shape: {}'.format(dest)
 
 if __name__ == '__main__':
     app.run_server(debug=True, host='0.0.0.0')

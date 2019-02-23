@@ -14,7 +14,7 @@ from scipy.misc import imresize # preserves single-pixel info _unlike_ img = img
 prepro = lambda img: imresize(img[35:195].mean(2), (80,80)).astype(np.float32).reshape(1,80,80)/255.
 
 def rollout(model, env, max_ep_len=3e3, render=False):
-    history = {'ins': [], 'logits': [], 'values': [], 'outs': [], 'hx': [], 'cx': []}
+    history = {'ins': [], 'logits': [], 'values': [], 'outs': [], 'hx': []}
     
     state = torch.Tensor(prepro(env.reset())) # get first state
     episode_length, epr, eploss, done  = 0, 0, 0, False # bookkeeping

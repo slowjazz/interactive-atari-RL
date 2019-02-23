@@ -33,8 +33,8 @@ app.layout = html.Div(children=[
             dcc.Slider(id='snapshot-slider',
                    min = 1,
                    max = 100,
-                   value = 0,
-                   marks = {i: str(i) for i in range(1, 100, 5)},
+                   value = 50,
+                   marks = {i: str(i) for i in range(0, 100, 5)},
                    #step = None
                
                   )
@@ -76,8 +76,7 @@ app.layout = html.Div(children=[
                        ]
            
              )
-            
-
+           
 ])
 
 @app.callback(

@@ -29,6 +29,11 @@ jupyter notebook
 -> visualize_atari/jacobian-vs-perturbation.ipynb
 ```
 
+### Baseline Update
+
+Same instructions as in `Update 1`. Presentation in `assets/VAML Baseline.pdf`
+
+
 **Environment:**
 - Python 3.6
 - PyTorch 1.0 

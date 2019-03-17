@@ -15,6 +15,9 @@ import torch # Unsure of Overhead
 from torch.autograd import Variable
 import torch.nn.functional as F
 
+import gym
+from visualize_atari import *
+
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
@@ -27,7 +30,7 @@ log_data['frames'] = log_data['frames']/500e3
 
 replays = h5py.File('static/model_rollouts_5.h5','r')
 logits = replays['models_model7-02-17-20-41/model.30.tar/history/0/logits'].value
-softmax_logits = F.softmax(torch.from_numpy(logits)).numpy()
+softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
 traces = []
 actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
 for a in range(softmax_logits.shape[1]):
@@ -40,8 +43,62 @@ for a in range(softmax_logits.shape[1]):
         stackgroup = 'one',
         name = actions[a]
     )
-    traces.append(trace)        
+    traces.append(trace) 
+
     
+trace1 = go.Scatter(
+    x=[1, 2, 3],
+    y=[4, 5, 6]
+)
+trace2 = go.Scatter(
+    x=[20, 30, 40],
+    y=[50, 60, 70],
+    xaxis='x2',
+    yaxis='y2'
+)
+trace3 = go.Scatter(
+    x=[300, 400, 500],
+    y=[600, 700, 800],
+    xaxis='x3',
+    yaxis='y3'
+)
+trace4 = go.Scatter(
+    x=[4000, 5000, 6000],
+    y=[7000, 8000, 9000],
+    xaxis='x4',
+    yaxis='y4'
+)
+subplots_data = [trace1, trace2, trace3, trace4]
+subplots_layout = go.Layout(
+    xaxis=dict(
+        domain=[0, 0.45]
+    ),
+    yaxis=dict(
+        domain=[0, 0.45]
+    ),
+    xaxis2=dict(
+        domain=[0.55, 1]
+    ),
+    xaxis3=dict(
+        domain=[0, 0.45],
+        anchor='y3'
+    ),
+    xaxis4=dict(
+        domain=[0.55, 1],
+        anchor='y4'
+    ),
+    yaxis2=dict(
+        domain=[0, 0.45],
+        anchor='x2'
+    ),
+    yaxis3=dict(
+        domain=[0.55, 1]
+    ),
+    yaxis4=dict(
+        domain=[0.55, 1],
+        anchor='x4'
+    )
+)
 
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
@@ -76,7 +133,13 @@ app.layout = html.Div(children=[
                   )
         ])
     ], style={'padding-bottom':'20px'}),
-    html.Img(id = 'screen-ins',width='320'),
+    html.Div([
+        html.Img(id = 'screen-ins',width='320'),
+        dcc.Graph(figure = go.Figure(
+            data = subplots_data,
+            layout= subplots_layout
+        ))
+    ]),
     html.Div(children=[dcc.Graph(
                            id='mean-epr_over_eps',
                            figure={

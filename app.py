@@ -11,16 +11,47 @@ import h5py
 import numpy as np
 import os 
 
+import torch # Unsure of Overhead
+from torch.autograd import Variable
+import torch.nn.functional as F
+
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+
+server = app.server
 
 log_data = pd.read_csv("baby-a3c/breakout-v4/log-model7-02-17-20-41.txt")
 log_data.columns = log_data.columns.str.replace(" ", "")
 log_data['frames'] = log_data['frames']/500e3
 
+replays = h5py.File('static/model_rollouts_5.h5','r')
+logits = replays['models_model7-02-17-20-41/model.30.tar/history/0/logits'].value
+softmax_logits = F.softmax(torch.from_numpy(logits)).numpy()
+traces = []
+actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+for a in range(softmax_logits.shape[1]):
+    trace = dict(
+        x = list(range(softmax_logits.shape[0])),
+        y = softmax_logits[:, a],
+        hoverinfo = 'x+y',
+        mode = 'lines',
+        line = dict(width=0.5),
+        stackgroup = 'one',
+        name = actions[a]
+    )
+    traces.append(trace)        
+    
+
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
+    html.Div([
+        dcc.Graph(
+            figure = go.Figure(
+                data = traces
+            )
+        )
+    ]),
     html.Div([
         html.Div([
             html.Div(id='frame-val'),
@@ -45,7 +76,7 @@ app.layout = html.Div(children=[
                   )
         ])
     ], style={'padding-bottom':'20px'}),
-    html.Img(id = 'screen-ins'),
+    html.Img(id = 'screen-ins',width='320'),
     html.Div(children=[dcc.Graph(
                            id='mean-epr_over_eps',
                            figure={
@@ -114,7 +145,7 @@ def update_frame_in_slider(frame, snapshot):
     snapshot_dir = os.path.join(images, str(snapshot))
     if str(frame) not in [name.split('.')[0] for name in os.listdir(snapshot_dir)]:
         return os.path.join(images, 'dead.png') # if frame not there
-    print(os.path.join(snapshot_dir, str(frame)+'.png'))
+    #print(os.path.join(snapshot_dir, str(frame)+'.png'))
     return os.path.join(snapshot_dir, str(frame)+'.png')
     
 

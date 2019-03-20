@@ -76,8 +76,8 @@ app.layout = html.Div(children=[
                    min = 1,
                    max = 100,
                    value = 50,
-                   marks = {i: str(i) for i in range(0, 100, 5)},
-                   #step = None
+                   marks = {i: str(i) for i in range(1, 110, 10)},
+                   step = None
                
                   )
         ])

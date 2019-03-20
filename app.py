@@ -36,7 +36,7 @@ app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
     html.Div([
         dcc.Graph(id = 'actions')
-    ]),
+    ], style={'border':'1px solid black', 'margin-bottom':'20px'}),
     html.Div([
         html.Div([
             html.Div(id='frame-val'),
@@ -138,8 +138,8 @@ def update_actions(frame, snapshot):
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for a in range(softmax_logits.shape[1]):
         trace = dict(
-        x = list(range(softmax_logits.shape[0])),
-        y = softmax_logits[:, a],
+        x = list(range(0, softmax_logits.shape[0], 5)),
+        y = softmax_logits[::5, a],
         hoverinfo = 'x+y',
         mode = 'lines',
         line = dict(width=0.5),
@@ -147,7 +147,11 @@ def update_actions(frame, snapshot):
         name = actions[a]
     )
         traces.append(trace) 
-    figure = go.Figure(data = traces)
+    xaxis=dict(
+        title='frame')
+    yaxis=dict(
+        title='Softmax value')
+    figure = go.Figure(data = traces, layout=go.Layout(xaxis=xaxis, yaxis=yaxis))
     return figure
 
 # @app.callback(

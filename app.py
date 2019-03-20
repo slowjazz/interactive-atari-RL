@@ -31,32 +31,11 @@ log_data.columns = log_data.columns.str.replace(" ", "")
 log_data['frames'] = log_data['frames']/500e3
 
 replays = h5py.File('static/model_rollouts_5.h5','r')
-logits = replays['models_model7-02-17-20-41/model.30.tar/history/0/logits'].value
-ins = replays['models_model7-02-17-20-41/model.30.tar/history/0/ins'].value
-softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
-traces = []
-actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
-for a in range(softmax_logits.shape[1]):
-    trace = dict(
-        x = list(range(softmax_logits.shape[0])),
-        y = softmax_logits[:, a],
-        hoverinfo = 'x+y',
-        mode = 'lines',
-        line = dict(width=0.5),
-        stackgroup = 'one',
-        name = actions[a]
-    )
-    traces.append(trace) 
-
     
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
     html.Div([
-        dcc.Graph(
-            figure = go.Figure(
-                data = traces
-            )
-        )
+        dcc.Graph(id = 'actions')
     ]),
     html.Div([
         html.Div([
@@ -65,7 +44,7 @@ app.layout = html.Div(children=[
                    min = 0,
                    max = 2500,
                    value = 0,
-                   marks = {i: str(i) for i in range(0, 2500, 100)},
+                   marks = {i: str(i) for i in range(0, 3000, 100)},
                    step = None
                
                   )
@@ -76,7 +55,7 @@ app.layout = html.Div(children=[
                    min = 1,
                    max = 100,
                    value = 50,
-                   marks = {i: str(i) for i in range(1, 110, 10)},
+                   marks = {i: str(i) for i in [1,10,19,30,40,50,60,70,80,90,100]},
                    step = None
                
                   )
@@ -85,7 +64,7 @@ app.layout = html.Div(children=[
     html.Div([
         html.Div(html.Img(id = 'screen-ins',width='320'), style = {'display':'inline-block'}),
         html.Div(dcc.Graph(id = 'regions_subplots'
-                           ), style={'display':'inline-block'})
+                           ), style={'display':'inline-block', 'border':'1px solid black', 'margin':'25px'})
     ]),
     html.Div(children=[dcc.Graph(
                            id='mean-epr_over_eps',
@@ -134,11 +113,57 @@ def update_frame_slider(input_value):
     return 'Frame number of episode: {}'.format(input_value)
 
 @app.callback(
-    Output(component_id='snapshot-val', component_property='children'),
+    [Output(component_id='snapshot-val', component_property='children'),
+     Output(component_id='frame-slider', component_property='marks')],
     [Input(component_id='snapshot-slider', component_property='value')]
 )
-def update_snapshot_slider(input_value):
-    return 'Model iteration (500k frame increments): {}'.format(input_value)
+def update_snapshot_slider(snapshot):
+    length = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/logits'].shape[0]
+    d = {i: str(i) for i in range(0, 3000, 100)}
+    for k in d:
+        if k > length:
+            d[k] = {'label': k, 'style':{'color': '#f50'}}
+    
+    return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
+
+@app.callback(
+    Output(component_id='actions', component_property='figure'),
+    [Input(component_id='frame-slider', component_property='value'),
+     Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_actions(frame, snapshot):
+    logits = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/logits'].value
+    softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
+    traces = []
+    actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+    for a in range(softmax_logits.shape[1]):
+        trace = dict(
+        x = list(range(softmax_logits.shape[0])),
+        y = softmax_logits[:, a],
+        hoverinfo = 'x+y',
+        mode = 'lines',
+        line = dict(width=0.5),
+        stackgroup = 'one',
+        name = actions[a]
+    )
+        traces.append(trace) 
+    figure = go.Figure(data = traces)
+    return figure
+
+# @app.callback(
+#     Output(component_id='actions', component_property='figure'),
+#     [Input(component_id='snapshot-slider', component_property='value')]
+# )
+# def update_epr(snapshot):
+
+#     return figure
+
+def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
+    S = fudge_factor * S / S.max()
+    I = frame.astype('uint16')
+    I[35:195,:,channel] += S.astype('uint16')
+    I = I.clip(1,255).astype('uint8')
+    return I
 
 @app.callback(
     Output(component_id='screen-ins', component_property='src'),
@@ -147,10 +172,22 @@ def update_snapshot_slider(input_value):
 )
 def update_frame_in_slider(frame, snapshot):
     # fetch frame based on snapshot and frame
+    ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
     img = ins.copy()
+    history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+    actor_frames = history['actor_sal'].value
+    critic_frames = history['critic_sal'].value
     if frame > len(img):
         img = np.zeros((210,160,3))
-    else: img = img[frame]
+        actor_frames = img.copy(); critic_frames = img.copy()
+    else: 
+        img = img[frame]
+        actor = actor_frames[int(frame/100)]; critic=critic_frames[int(frame/100)]
+    
+        
+    img = saliency_on_frame_abbr(actor, img, 300, 0, 2)
+    img = saliency_on_frame_abbr(critic, img, 400, 0 , 0)
+    
     buffer = BytesIO()
     plt.imsave(buffer, img)
     img_str = base64.b64encode(buffer.getvalue()).decode()
@@ -158,9 +195,11 @@ def update_frame_in_slider(frame, snapshot):
 
 @app.callback(
     Output(component_id='regions_subplots', component_property='figure'),
-    [Input(component_id='frame-slider', component_property='value')]
+    [Input(component_id='frame-slider', component_property='value'),
+     Input(component_id='snapshot-slider', component_property='value')]
 )
-def update_regions_plots(frame):
+def update_regions_plots(frame, snapshot):
+    ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
     img = ins.copy()
     if frame > len(img):
         img = np.zeros((210,160,3))
@@ -170,7 +209,7 @@ def update_regions_plots(frame):
     
     it = 30
 
-    history = replays['models_model7-02-17-20-41/model.30.tar/history/0']
+    history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
     actor_frames = history['actor_sal'].value
     critic_frames = history['critic_sal'].value
     

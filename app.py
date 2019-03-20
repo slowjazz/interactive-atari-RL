@@ -64,8 +64,7 @@ app.layout = html.Div(children=[
     html.Div([
         html.Div(html.Img(id = 'screen-ins',width='320'), style = {'display':'inline-block'}),
         html.Div(dcc.Graph(id = 'regions_subplots'
-                           ), style={'display':'inline-block'}),
-        html.Div(dcc.Graph(id = 'ep-reward'), style={'display':'inline-block'})
+                           ), style={'display':'inline-block', 'border':'1px solid black', 'margin':'25px'})
     ]),
     html.Div(children=[dcc.Graph(
                            id='mean-epr_over_eps',
@@ -114,11 +113,18 @@ def update_frame_slider(input_value):
     return 'Frame number of episode: {}'.format(input_value)
 
 @app.callback(
-    Output(component_id='snapshot-val', component_property='children'),
+    [Output(component_id='snapshot-val', component_property='children'),
+     Output(component_id='frame-slider', component_property='marks')],
     [Input(component_id='snapshot-slider', component_property='value')]
 )
-def update_snapshot_slider(input_value):
-    return 'Model iteration (500k frame increments): {}'.format(input_value)
+def update_snapshot_slider(snapshot):
+    length = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/logits'].shape[0]
+    d = {i: str(i) for i in range(0, 3000, 100)}
+    for k in d:
+        if k > length:
+            d[k] = {'label': k, 'style':{'color': '#f50'}}
+    
+    return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
 
 @app.callback(
     Output(component_id='actions', component_property='figure'),
@@ -143,6 +149,14 @@ def update_actions(frame, snapshot):
         traces.append(trace) 
     figure = go.Figure(data = traces)
     return figure
+
+# @app.callback(
+#     Output(component_id='actions', component_property='figure'),
+#     [Input(component_id='snapshot-slider', component_property='value')]
+# )
+# def update_epr(snapshot):
+
+#     return figure
 
 def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
     S = fudge_factor * S / S.max()

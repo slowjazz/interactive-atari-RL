@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 import os, base64
 from io import BytesIO
+from scipy.stats import entropy
 
 import torch # Unsure of Overhead
 from torch.autograd import Variable
@@ -34,6 +35,12 @@ replays = h5py.File('static/model_rollouts_5.h5','r')
     
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
+    html.Div([
+        dcc.Graph(id = 'action-entropy-long')
+    ]),
+    html.Div([
+        dcc.Graph(id = 'action-entropy')
+    ], style={'border':'1px solid black'}),
     html.Div([
         dcc.Graph(id = 'actions')
     ], style={'border':'1px solid black', 'margin-bottom':'20px'}),
@@ -125,6 +132,69 @@ def update_snapshot_slider(snapshot):
             d[k] = {'label': k, 'style':{'color': '#f50'}}
     
     return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
+
+@app.callback(
+    Output(component_id='action-entropy-long', component_property='figure'),
+    [Input(component_id='frame-slider', component_property='value'),
+     Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_actions_entropy_long(frame, snapshot):
+    iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
+    y_data = []
+    actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+    for i in iterations:
+        print(i)
+        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
+        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
+        print(i, entropy(softmax_logits))
+        y_data.append(entropy(softmax_logits))
+    
+    y_data = np.array(y_data)
+    series = [y_data[:, i] for i in range(4)]
+    
+    data = []
+    for i, t in enumerate(series):
+        trace = go.Scatter(
+                y = t,
+                x = list(range(len(y_data))),
+                name = actions[i]
+                
+        )
+        data.append(trace)
+    
+    figure = go.Figure(data = data)
+    return figure
+
+@app.callback(
+    Output(component_id='action-entropy', component_property='figure'),
+    [Input(component_id='frame-slider', component_property='value'),
+     Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_actions_entropy(frame, snapshot):
+    iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
+    y_data = []
+    actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+    for i in iterations:
+        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
+        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy() 
+        y_data.append(entropy(softmax_logits))
+    
+    y_data = np.array(y_data)
+    series = [y_data[:, i] for i in range(4)]
+    
+    data = []
+    for i, t in enumerate(series):
+        trace = go.Scatter(
+                y = t,
+                x = list(range(len(y_data))),
+                name = actions[i]
+                
+        )
+        data.append(trace)
+    layout = go.Layout(title = 'Entropy by Action per Iteration Episode')
+    figure = go.Figure(data = data)
+    return figure
+
 
 @app.callback(
     Output(component_id='actions', component_property='figure'),
@@ -230,7 +300,6 @@ def update_regions_plots(frame, snapshot):
     
     a_traces = []
     for i in range(4):
-        print((targets[i][0]).shape)
         trace = dict(
             x = list(range(0, actor_frames.shape[0] * 100, 100)),
             y = (targets[i][0]).sum((1,2)) / actor_tot,
@@ -244,7 +313,6 @@ def update_regions_plots(frame, snapshot):
         
     c_traces = []
     for i in range(4):
-        print((targets[i][0]).shape)
         trace = dict(
             x = list(range(0, actor_frames.shape[0] * 100, 100)),
             y = (targets[i][1]).sum((1,2)) / critic_tot,

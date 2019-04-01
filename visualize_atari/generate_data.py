@@ -24,7 +24,8 @@ from visualize_atari import *
 
 env_name = 'Breakout-v0'
 save_dir = 'figures/'
-load_dir = '../baby-a3c/breakout-v4/models_model7-02-17-20-41/'
+model_folder = 'models_model7-02-17-20-41'
+load_dir = '../baby-a3c/breakout-v4/'+model_folder
 def get_rollout(it, seed = 1):
     print("set up dir variables and environment...")
     #load_dir = '{}/'.format(env_name.lower())
@@ -45,7 +46,7 @@ def get_rollout(it, seed = 1):
 if 'model_rollouts_5.h5' not in os.listdir('../static'):
     store = h5py.File('../static/model_rollouts_5.h5','w')
 else:
-    store = h5py.File('../static/model_rollouts_5.h5','w')
+    store = h5py.File('../static/model_rollouts_5.h5','a')
 
 
 
@@ -67,12 +68,16 @@ for modelname in filter(filter_iterations, os.listdir(load_dir)):
 #             exceptions.append(iteration)
 #             continue
         _, history = get_rollout(iteration, ep+1)
-        path = 'models_model7-02-17-20-41'
+        path = model_folder
         for k in history.keys():
             target = np.stack(history[k], axis=0)[::5]
-            store.create_dataset(os.path.join(path, modelname, 
+            if k == "ins":
+                store.create_dataset(os.path.join(path, modelname, 
                                 'history',str(ep), k), data = target,
                                 compression = "gzip")
+            else:
+                store.create_dataset(os.path.join(path, modelname, 
+                'history',str(ep), k), data = target)
             print('saved rollout at', os.path.join(path, modelname, 
                                 'history',str(ep), k))
         
@@ -102,12 +107,12 @@ for iteration in [1,19,30,40,50,60,70,80,90,100]:
     
     
     for ep in range(episodes):
-        ins = store['models_model7-02-17-20-41/model.'+str(iteration)+'.tar/history/'+str(ep)+'/ins'].value
-        hx = store['models_model7-02-17-20-41/model.'+str(iteration)+'.tar/history/'+str(ep)+'/hx'].value
+        ins = store[model_folder + '/model.'+str(iteration)+'.tar/history/'+str(ep)+'/ins'].value
+        hx = store[model_folder + '/model.'+str(iteration)+'.tar/history/'+str(ep)+'/hx'].value
         history = {'ins':ins, 'hx':hx}
 
         meta = get_env_meta(env_name)
-        env = gym.make(env_name) ; env.seed(1)
+        env = gym.make(env_name) ; env.seed(ep+1)
         model = NNPolicy(channels=1, num_actions=env.action_space.n, memsize=256)
         try:
             _ = model.try_load(load_dir, checkpoint='*.'+str(iteration)+'.tar') ; torch.manual_seed(ep+1)
@@ -136,7 +141,7 @@ for iteration in [1,19,30,40,50,60,70,80,90,100]:
             
         actor_frames = np.array(actor_frames)
         critic_frames = np.array(critic_frames)
-        path = 'models_model7-02-17-20-41'
+        path = model_folder
         modelname = 'model.'+str(iteration)+'.tar'
         actor_path = os.path.join(path, modelname, 'history',str(ep), 'actor_sal')
         critic_path = os.path.join(path, modelname, 'history',str(ep), 'critic_sal')
@@ -148,4 +153,6 @@ for iteration in [1,19,30,40,50,60,70,80,90,100]:
             store.create_dataset(critic_path, data = critic_frames)
         print('saved saliency at', os.path.join(path, modelname, 
                                 'history',str(ep), '<SAL_TYPE>'))
+
+store.close()
         

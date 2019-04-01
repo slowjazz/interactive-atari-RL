@@ -12,6 +12,7 @@ import h5py
 import numpy as np
 import os, base64
 from io import BytesIO
+from scipy.stats import entropy
 
 import torch # Unsure of Overhead
 from torch.autograd import Variable
@@ -35,8 +36,31 @@ replays = h5py.File('static/model_rollouts_5.h5','r')
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
     html.Div([
-        dcc.Graph(id = 'actions')
+        dcc.Graph(id = 'action-entropy-long')
     ]),
+    html.Div([
+        dcc.Graph(id = 'action-entropy')
+    ], style={'border':'1px solid black'}),
+    html.Div([
+        dcc.Graph(id='mean-epr_over_eps',
+                           figure={
+                               'data': [
+                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
+                                   go.Scatter(x=log_data['frames'],
+                                              y=log_data['mean-epr'])
+                               ],
+                               'layout': {
+                                   'xaxis': {'title': '500k Frames'},
+                                   'yaxis': {'title': 'Mean reward'},
+                                   'title': 'mean episode rewards over episodes'
+                               }
+                           }, 
+                  style = {'height':'40vh', 'border':'1px solid black'}
+                       )
+    ]),
+    html.Div([
+        dcc.Graph(id = 'actions')
+    ], style={'border':'1px solid black', 'margin-bottom':'20px'}),
     html.Div([
         html.Div([
             html.Div(id='frame-val'),
@@ -66,22 +90,7 @@ app.layout = html.Div(children=[
         html.Div(dcc.Graph(id = 'regions_subplots'
                            ), style={'display':'inline-block', 'border':'1px solid black', 'margin':'25px'})
     ]),
-    html.Div(children=[dcc.Graph(
-                           id='mean-epr_over_eps',
-                           figure={
-                               'data': [
-                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
-                                   go.Scatter(x=log_data['frames'],
-                                              y=log_data['mean-epr'])
-                               ],
-                               'layout': {
-                                   'xaxis': {'title': '500k Frames'},
-                                   'yaxis': {'title': 'Mean reward'},
-                                   'title': 'mean episode rewards over episodes'
-                               }
-                           },
-                           style={'float':'left','width':'50%'}
-                       ),
+    html.Div(children=[
                        dcc.Graph(
                            id='loss_over_eps',
                            figure={
@@ -127,6 +136,70 @@ def update_snapshot_slider(snapshot):
     return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
 
 @app.callback(
+    Output(component_id='action-entropy-long', component_property='figure'),
+    [Input(component_id='frame-slider', component_property='value'),
+     Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_actions_entropy_long(frame, snapshot):
+    iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
+    y_data = []
+    actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+    for i in iterations:
+        print(i)
+        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
+        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
+        print(i, entropy(softmax_logits))
+        y_data.append(entropy(softmax_logits))
+    
+    y_data = np.array(y_data)
+    series = [y_data[:, i] for i in range(4)]
+    
+    data = []
+    for i, t in enumerate(series):
+        trace = go.Scatter(
+                y = t,
+                x = list(range(len(y_data))),
+                name = actions[i]
+                
+        )
+        data.append(trace)
+    
+    figure = go.Figure(data = data)
+    return figure
+
+@app.callback(
+    Output(component_id='action-entropy', component_property='figure'),
+    [Input(component_id='frame-slider', component_property='value'),
+     Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_actions_entropy(frame, snapshot):
+    iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
+    y_data = []
+    actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+    for i in iterations:
+        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
+        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy() 
+        y_data.append(entropy(softmax_logits))
+    
+    y_data = np.array(y_data)
+    series = [y_data[:, i] for i in range(4)]
+    
+    data = []
+    for i, t in enumerate(series):
+        trace = go.Scatter(
+                y = t,
+                x = iterations,
+                name = actions[i]
+                
+        )
+        data.append(trace)
+    layout = go.Layout(title = 'Entropy by Action per Iteration Episode'
+                       , height = 300)
+    figure = go.Figure(data = data, layout = layout)
+    return figure
+
+
+@app.callback(
     Output(component_id='actions', component_property='figure'),
     [Input(component_id='frame-slider', component_property='value'),
      Input(component_id='snapshot-slider', component_property='value')]
@@ -138,8 +211,8 @@ def update_actions(frame, snapshot):
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for a in range(softmax_logits.shape[1]):
         trace = dict(
-        x = list(range(softmax_logits.shape[0])),
-        y = softmax_logits[:, a],
+        x = list(range(0, softmax_logits.shape[0], 5)),
+        y = softmax_logits[::5, a],
         hoverinfo = 'x+y',
         mode = 'lines',
         line = dict(width=0.5),
@@ -147,7 +220,11 @@ def update_actions(frame, snapshot):
         name = actions[a]
     )
         traces.append(trace) 
-    figure = go.Figure(data = traces)
+    xaxis=dict(
+        title='frame')
+    yaxis=dict(
+        title='Softmax value')
+    figure = go.Figure(data = traces, layout=go.Layout(xaxis=xaxis, yaxis=yaxis))
     return figure
 
 # @app.callback(
@@ -226,7 +303,6 @@ def update_regions_plots(frame, snapshot):
     
     a_traces = []
     for i in range(4):
-        print((targets[i][0]).shape)
         trace = dict(
             x = list(range(0, actor_frames.shape[0] * 100, 100)),
             y = (targets[i][0]).sum((1,2)) / actor_tot,
@@ -240,7 +316,6 @@ def update_regions_plots(frame, snapshot):
         
     c_traces = []
     for i in range(4):
-        print((targets[i][0]).shape)
         trace = dict(
             x = list(range(0, actor_frames.shape[0] * 100, 100)),
             y = (targets[i][1]).sum((1,2)) / critic_tot,

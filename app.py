@@ -42,6 +42,23 @@ app.layout = html.Div(children=[
         dcc.Graph(id = 'action-entropy')
     ], style={'border':'1px solid black'}),
     html.Div([
+        dcc.Graph(id='mean-epr_over_eps',
+                           figure={
+                               'data': [
+                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
+                                   go.Scatter(x=log_data['frames'],
+                                              y=log_data['mean-epr'])
+                               ],
+                               'layout': {
+                                   'xaxis': {'title': '500k Frames'},
+                                   'yaxis': {'title': 'Mean reward'},
+                                   'title': 'mean episode rewards over episodes'
+                               }
+                           }, 
+                  style = {'height':'40vh', 'border':'1px solid black'}
+                       )
+    ]),
+    html.Div([
         dcc.Graph(id = 'actions')
     ], style={'border':'1px solid black', 'margin-bottom':'20px'}),
     html.Div([
@@ -73,22 +90,7 @@ app.layout = html.Div(children=[
         html.Div(dcc.Graph(id = 'regions_subplots'
                            ), style={'display':'inline-block', 'border':'1px solid black', 'margin':'25px'})
     ]),
-    html.Div(children=[dcc.Graph(
-                           id='mean-epr_over_eps',
-                           figure={
-                               'data': [
-                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
-                                   go.Scatter(x=log_data['frames'],
-                                              y=log_data['mean-epr'])
-                               ],
-                               'layout': {
-                                   'xaxis': {'title': '500k Frames'},
-                                   'yaxis': {'title': 'Mean reward'},
-                                   'title': 'mean episode rewards over episodes'
-                               }
-                           },
-                           style={'float':'left','width':'50%'}
-                       ),
+    html.Div(children=[
                        dcc.Graph(
                            id='loss_over_eps',
                            figure={
@@ -186,13 +188,14 @@ def update_actions_entropy(frame, snapshot):
     for i, t in enumerate(series):
         trace = go.Scatter(
                 y = t,
-                x = list(range(len(y_data))),
+                x = iterations,
                 name = actions[i]
                 
         )
         data.append(trace)
-    layout = go.Layout(title = 'Entropy by Action per Iteration Episode')
-    figure = go.Figure(data = data)
+    layout = go.Layout(title = 'Entropy by Action per Iteration Episode'
+                       , height = 300)
+    figure = go.Figure(data = data, layout = layout)
     return figure
 
 

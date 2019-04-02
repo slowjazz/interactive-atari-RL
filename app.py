@@ -66,10 +66,10 @@ app.layout = html.Div(children=[
             html.Div(id='frame-val'),
             dcc.Slider(id='frame-slider',
                    min = 0,
-                   max = 2500,
+                   max = 3000,
                    value = 0,
                    marks = {i: str(i) for i in range(0, 3000, 100)},
-                   step = None
+                   step = 5
                
                   )
         ], style = {'padding-bottom':'50px', 'padding-left':'10px'}),

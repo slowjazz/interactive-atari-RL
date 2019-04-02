@@ -25,7 +25,7 @@ from visualize_atari import *
 env_name = 'Breakout-v0'
 save_dir = 'figures/'
 model_folder = 'models_model7-02-17-20-41'
-load_dir = '../baby-a3c/breakout-v4/'+model_folder
+load_dir = '../baby-a3c/breakout-v4/'+model_folder + '/'
 def get_rollout(it, seed = 1):
     print("set up dir variables and environment...")
     #load_dir = '{}/'.format(env_name.lower())
@@ -70,7 +70,7 @@ for modelname in filter(filter_iterations, os.listdir(load_dir)):
         _, history = get_rollout(iteration, ep+1)
         path = model_folder
         for k in history.keys():
-            target = np.stack(history[k], axis=0)[::5]
+            target = np.stack(history[k], axis=0)
             if k == "ins":
                 store.create_dataset(os.path.join(path, modelname, 
                                 'history',str(ep), k), data = target,
@@ -82,7 +82,6 @@ for modelname in filter(filter_iterations, os.listdir(load_dir)):
                                 'history',str(ep), k))
         
 #exceptions
-
 
 # # store saliency maps
 
@@ -125,9 +124,7 @@ for iteration in [1,19,30,40,50,60,70,80,90,100]:
         actor_frames = []
         critic_frames = []
         # 5 frame increments stored in rollout data, we use 5 frame increments to generate saliency maps
-        for frame_ix in range(0, hx.shape[0]):
-            if frame_ix >= len(history['ins']):
-                break
+        for frame_ix in range(0, ins.shape[0]):
             actor_saliency = score_frame(model, history, frame_ix, radius, density, interp_func=occlude, mode='actor')
             critic_saliency = score_frame(model, history, frame_ix, radius, density, interp_func=occlude, mode='critic')
             frame = history['ins'][frame_ix].squeeze().copy()

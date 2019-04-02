@@ -134,7 +134,6 @@ for iteration in [1,19,30,40,50,60,70,80,90,100]:
             
             actor_frames.append(actor_map)
             critic_frames.append(critic_map)
-            print("saved {}th frame & sal-map", frame_ix)
             
         actor_frames = np.array(actor_frames)
         critic_frames = np.array(critic_frames)

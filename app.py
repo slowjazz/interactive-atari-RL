@@ -196,9 +196,19 @@ def update_actions_entropy(frame, snapshot):
                            title='Softmax',
                            overlaying='y',
                            side='right'
-                       ))
+                       ),
+                       clickmode = 'event+select')
     figure = go.Figure(data = data, layout = layout)
     return figure
+
+@app.callback(
+    Output(component_id='snapshot-slider', component_property='value'),
+    [Input(component_id='action-entropy', component_property = 'clickData')]
+)
+def update_link_action_entropy_snapshot(clickData):
+    if clickData:
+        return (clickData['points'][0]['x'])
+    return 50
 
 
 @app.callback(
@@ -360,7 +370,6 @@ def update_regions_plots(snapshot):
 )
 def update_regions_bars(snapshot):
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
-    rewards = history['reward']
     actor_frames = history['actor_sal'].value
     critic_frames = history['critic_sal'].value
     
@@ -394,13 +403,9 @@ def update_regions_bars(snapshot):
         colorscale = 'Viridis',
         yaxis='y2')
     
-    trace2 = go.Bar(
-    x=list(range(len(rewards))),
-    y= -np.cumsum(rewards)
-    )
     #data = [trace2, cheatmap]
     data = [cheatmap]
-    layout = go.Layout(bargap = 0)
+    layout = go.Layout(title = 'Critic Saliency Heatmap by Region')
     fig = go.Figure(data = data, layout = layout)
     return fig
 
@@ -416,7 +421,7 @@ def update_rewards_cum(snapshot):
     y= -np.cumsum(rewards)
     )
     data = [trace2]
-    layout = go.Layout(bargap = 0)
+    layout = go.Layout(bargap = 0, title = 'Cumulative Episode Reward')
     fig = go.Figure(data = data, layout = layout)
     return fig
     

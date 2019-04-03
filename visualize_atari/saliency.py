@@ -30,7 +30,7 @@ def run_through_model(model, history, ix, interp_func=None, mask=None, blur_memo
         im = interp_func(prepro(history['ins'][ix]).squeeze(), mask).reshape(1,80,80) # perturb input I -> I'
     tens_state = torch.Tensor(im)
     state = Variable(tens_state.unsqueeze(0), volatile=True)
-    hx = Variable(torch.Tensor(history['hx'][ix-1]).view(1,-1))
+    hx = Variable(torch.Tensor(history['hx'][ix*5-1]).view(1,-1))
     #cx = Variable(torch.Tensor(history['cx'][ix-1]).view(1,-1))
     #if blur_memory is not None: cx.mul_(1-blur_memory) # perturb memory vector
     #return model((state, (hx, cx)))[0] if mode == 'critic' else model((state, (hx, cx)))[1]

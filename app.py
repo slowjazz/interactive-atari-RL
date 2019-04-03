@@ -78,7 +78,7 @@ app.layout = html.Div(children=[
             dcc.Slider(id='snapshot-slider',
                    min = 1,
                    max = 100,
-                   value = 50,
+                   value = 1,
                    marks = {i: str(i) for i in [1,10,19,30,40,50,60,70,80,90,100]},
                    step = None
                
@@ -145,9 +145,7 @@ def update_actions_entropy_long(frame, snapshot):
     y_data = []
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for i in iterations:
-        print(i)
-        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
-        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
+        softmax_logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/outs'].value
         print(i, entropy(softmax_logits))
         y_data.append(entropy(softmax_logits))
     
@@ -177,8 +175,7 @@ def update_actions_entropy(frame, snapshot):
     y_data = []
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for i in iterations:
-        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
-        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy() 
+        softmax_logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/outs'].value
         y_data.append(entropy(softmax_logits))
     
     y_data = np.array(y_data)
@@ -205,8 +202,7 @@ def update_actions_entropy(frame, snapshot):
      Input(component_id='snapshot-slider', component_property='value')]
 )
 def update_actions(frame, snapshot):
-    logits = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/logits'].value
-    softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
+    softmax_logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/outs'].value
     traces = []
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for a in range(softmax_logits.shape[1]):
@@ -249,6 +245,7 @@ def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
 )
 def update_frame_in_slider(frame, snapshot):
     # fetch frame based on snapshot and frame
+    
     ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
     img = ins.copy()
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
@@ -259,7 +256,7 @@ def update_frame_in_slider(frame, snapshot):
         actor_frames = img.copy(); critic_frames = img.copy()
     else: 
         img = img[frame]
-        actor = actor_frames[int(frame/100)]; critic=critic_frames[int(frame/100)]
+        actor = actor_frames[int(frame/5)]; critic=critic_frames[int(frame/5)]
     
         
     img = saliency_on_frame_abbr(actor, img, 300, 0, 2)
@@ -284,7 +281,6 @@ def update_regions_plots(frame, snapshot):
     
     ymid, xmid = 110, 80
     
-    it = 30
 
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
     actor_frames = history['actor_sal'].value
@@ -304,7 +300,7 @@ def update_regions_plots(frame, snapshot):
     a_traces = []
     for i in range(4):
         trace = dict(
-            x = list(range(0, actor_frames.shape[0] * 100, 100)),
+            x = list(range(0, actor_frames.shape[0] * 5, 5)),
             y = (targets[i][0]).sum((1,2)) / actor_tot,
             hoverinfo = 'x+y',
             line = dict(
@@ -317,7 +313,7 @@ def update_regions_plots(frame, snapshot):
     c_traces = []
     for i in range(4):
         trace = dict(
-            x = list(range(0, actor_frames.shape[0] * 100, 100)),
+            x = list(range(0, actor_frames.shape[0] * 5, 5)),
             y = (targets[i][1]).sum((1,2)) / critic_tot,
             hoverinfo = 'x+y',
             line = dict(

@@ -87,7 +87,7 @@ app.layout = html.Div(children=[
     ], style={'padding-bottom':'20px'}),
     html.Div([
         html.Div(html.Img(id = 'screen-ins',width='320'), style = {'display':'inline-block'}),
-        html.Div([dcc.Graph(id = 'regions_subplots')],
+        html.Div([dcc.Graph(id = 'regions-subplots')],
                  style = {'display':'inline-block'}
                   ),
         html.Div([dcc.Graph(id = 'regions_bars'),
@@ -296,7 +296,7 @@ def update_frame_in_slider(frame, snapshot):
     return 'data:image/png;base64,{}'.format(img_str)
 
 @app.callback(
-    Output(component_id='regions_subplots', component_property='figure'),
+    Output(component_id='regions-subplots', component_property='figure'),
     [Input(component_id='snapshot-slider', component_property='value')]
 )
 def update_regions_plots(snapshot):    
@@ -352,7 +352,9 @@ def update_regions_plots(snapshot):
         fig.append_trace(series[2], 2, 1)
         fig.append_trace(series[3], 2, 2)
     
-    fig['layout'].update(title='Saliency intensity by quarter region', showlegend=False)
+    fig['layout'].update(title='Saliency intensity by quarter region', 
+                         showlegend=False,
+                         clickmode = 'event+select')
     fig['layout']['xaxis3'].update(title='Frame')
     fig['layout']['xaxis4'].update(title='Frame')
     fig['layout']['yaxis1'].update(title='Intensity', range=[0,1])
@@ -363,6 +365,16 @@ def update_regions_plots(snapshot):
     fig['layout']['xaxis2'].update(anchor='x4')
 
     return fig
+
+@app.callback(
+    Output(component_id='frame-slider', component_property='value'),
+    [Input(component_id='regions-subplots', component_property = 'clickData')]
+)
+def update_link_region_plots_frame(clickData):
+    if clickData:
+        return (clickData['points'][0]['x'])
+    return 50
+
 
 @app.callback(
     Output(component_id='regions_bars', component_property='figure'),

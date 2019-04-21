@@ -29,42 +29,44 @@ server = app.server
 
 log_data = pd.read_csv("baby-a3c/breakout-v4/log-model7-02-17-20-41.txt")
 log_data.columns = log_data.columns.str.replace(" ", "")
-epr_xrange = (log_data['frames']/500e3).values[::50]
-epr_vals = log_data['mean-epr'].values[::50]
+
 
 replays = h5py.File('static/model_rollouts_5.h5','r')
 
 
-rewards_candle_hovertext = [str(i) for i in epr_vals[:-1]]
-    
+
+snapshots = [1,19,30,40,50,60,70,80,90,100]
+
+saliency_toplevel = []
+for s in snapshots:
+    print(s)
+    history = replays['models_model7-02-17-20-41/model.'+str(s)+'.tar/history/0']
+    actor_frames, critic_frames = history['actor_sal'].value, history['critic_sal'].value
+    print(actor_frames.shape)
+    actor_tot = actor_frames.sum((1,2))
+    print(actor_tot.shape)
+    critic_tot = critic_frames.sum((1,2))
+    saliency_toplevel.append([actor_tot, critic_tot])
+
+saliency_toplevel
+
+
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
 #     html.Div([
 #         dcc.Graph(id = 'action-entropy-long')
 #     ]),
     html.Div([
-        dcc.Graph(id = 'rewards-candlestick',
-                 figure = {
-                     'data': [
-                         go.Ohlc(x = epr_xrange,
-                                 open = epr_vals[:-1],
-                                 high = epr_vals[:-1],
-                                 low = epr_vals[1:],
-                                 close = epr_vals[1:],
-                                 text = rewards_candle_hovertext,
-                                 hoverinfo = 'x+text')
-                     ],
-                     'layout': go.Layout(
-                         xaxis = dict(
-                         rangeslider = dict(
-                             visible = False
-                         )
-                         )
+        html.Div([
+            dcc.Graph(id = 'rewards-candlestick',
+                      style={'height':'20em'}
                      )
-                 }
-
-                 )
-    ], style={'border':'1px solid black'}),
+        ], style={'border':'1px solid black', 'display':'inline-block'}),
+        html.Div([
+            dcc.Graph(id = 'saliency-bars'
+                     )
+        ], style={'border':'1px solid black', 'display':'inline-block'}),
+    ], style = {'height':'30em','overflow':'auto','display':'block'}),
     html.Div([
         dcc.Graph(id = 'action-entropy')
     ], style={'border':'1px solid black'}),
@@ -169,8 +171,44 @@ def update_snapshot_slider(snapshot):
             d[k] = {'label': k, 'style':{'color': '#f50'}}
     return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
 
-
-
+@app.callback(
+    Output(component_id='rewards-candlestick', component_property='figure'),
+    [Input(component_id='frame-slider', component_property='value')]
+)
+def update_rewards_candlestick(frame):
+    epr_xrange = (log_data['frames']/500e3).values[::40]
+    epr_vals = log_data['mean-epr'].values[::40]
+    rewards_candle_hovertext = [str(i) for i in epr_vals[:-1]]
+    trace = go.Ohlc(x = epr_xrange,
+                    open = epr_vals[:-1],
+                    high = epr_vals[:-1],
+                    low = epr_vals[1:],
+                    close = epr_vals[1:],
+                    text = rewards_candle_hovertext,
+                    hoverinfo = 'x+text')
+    data = [trace]
+    layout = go.Layout(
+                 title = "Mean episode reward",
+                 xaxis = dict(
+                     title = "Frames (500k)",
+                 rangeslider = dict(
+                     visible = False
+                 )
+                 ),
+                 yaxis = dict(
+                     title = "Reward"
+                 ),
+                 margin = dict(
+                     l = 50,
+                     r = 10,
+                     b = 35,
+                     t = 30,
+                     pad = 4
+                 )
+             )
+    
+    figure = go.Figure(data = data, layout = layout)
+    return figure
 
 @app.callback(
     Output(component_id='action-entropy', component_property='figure'),

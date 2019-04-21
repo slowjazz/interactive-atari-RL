@@ -35,9 +35,9 @@ replays = h5py.File('static/model_rollouts_5.h5','r')
     
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
-    html.Div([
-        dcc.Graph(id = 'action-entropy-long')
-    ]),
+#     html.Div([
+#         dcc.Graph(id = 'action-entropy-long')
+#     ]),
     html.Div([
         dcc.Graph(id = 'action-entropy')
     ], style={'border':'1px solid black'}),
@@ -87,8 +87,14 @@ app.layout = html.Div(children=[
     ], style={'padding-bottom':'20px'}),
     html.Div([
         html.Div(html.Img(id = 'screen-ins',width='320'), style = {'display':'inline-block'}),
-        html.Div(dcc.Graph(id = 'regions_subplots'
-                           ), style={'display':'inline-block', 'border':'1px solid black', 'margin':'25px'})
+        html.Div([dcc.Graph(id = 'regions_subplots')],
+                 style = {'display':'inline-block'}
+                  ),
+        html.Div([dcc.Graph(id = 'regions_bars'),
+                  dcc.Graph(id = 'rewards_cum')],
+                           
+    style={'display':'inline-block', 'border':'1px solid black', 'margin':'25px'} 
+                )
     ]),
     html.Div(children=[
                        dcc.Graph(
@@ -114,6 +120,8 @@ app.layout = html.Div(children=[
            
 ])
 
+
+
 @app.callback(
     Output(component_id='frame-val', component_property='children'),
     [Input(component_id='frame-slider', component_property='value')]
@@ -132,40 +140,7 @@ def update_snapshot_slider(snapshot):
     for k in d:
         if k > length:
             d[k] = {'label': k, 'style':{'color': '#f50'}}
-    
     return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
-
-@app.callback(
-    Output(component_id='action-entropy-long', component_property='figure'),
-    [Input(component_id='frame-slider', component_property='value'),
-     Input(component_id='snapshot-slider', component_property='value')]
-)
-def update_actions_entropy_long(frame, snapshot):
-    iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
-    y_data = []
-    actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
-    for i in iterations:
-        print(i)
-        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
-        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
-        print(i, entropy(softmax_logits))
-        y_data.append(entropy(softmax_logits))
-    
-    y_data = np.array(y_data)
-    series = [y_data[:, i] for i in range(4)]
-    
-    data = []
-    for i, t in enumerate(series):
-        trace = go.Scatter(
-                y = t,
-                x = list(range(len(y_data))),
-                name = actions[i]
-                
-        )
-        data.append(trace)
-    
-    figure = go.Figure(data = data)
-    return figure
 
 @app.callback(
     Output(component_id='action-entropy', component_property='figure'),
@@ -175,28 +150,65 @@ def update_actions_entropy_long(frame, snapshot):
 def update_actions_entropy(frame, snapshot):
     iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
     y_data = []
+    ep_lengths = {}
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for i in iterations:
-        logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/logits'].value
-        softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy() 
-        y_data.append(entropy(softmax_logits))
+        softmax_logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/outs'].value
+        y_data.append(softmax_logits)
+        ep_lengths[i] = len(softmax_logits)
     
-    y_data = np.array(y_data)
-    series = [y_data[:, i] for i in range(4)]
-    
+    print(ep_lengths)
+    entropy_data = np.array([entropy(logits) for logits in y_data])
+    softmax_data = np.vstack(y_data)
+    avg_len = 20
+    ids = np.arange(len(softmax_data))//avg_len
+    series = [entropy_data[:, i] for i in range(4)] 
     data = []
     for i, t in enumerate(series):
         trace = go.Scatter(
                 y = t,
                 x = iterations,
                 name = actions[i]
-                
         )
         data.append(trace)
-    layout = go.Layout(title = 'Entropy by Action per Iteration Episode'
-                       , height = 300)
+        
+        averaged = np.bincount(ids,softmax_data[:,i])/np.bincount(ids)
+        trace2 = dict(
+            x = 101*np.arange(0, (len(softmax_data)/avg_len), 1/(len(softmax_data)/avg_len)),
+            #y = moving_average(softmax_data[:, i], 100),
+            y = averaged,
+            mode = 'lines',
+            line = dict(width=0.5),
+            stackgroup = 'one',
+            yaxis='y2',
+            name = actions[i]
+        )
+        data.append(trace2)
+    
+    
+    
+    layout = go.Layout(title = 'Entropy by Action per Iteration Episode', 
+                       height = 300,
+                       yaxis=dict(
+                           title='Entropy'
+                       ),
+                       yaxis2=dict(
+                           title='Softmax',
+                           overlaying='y',
+                           side='right'
+                       ),
+                       clickmode = 'event+select')
     figure = go.Figure(data = data, layout = layout)
     return figure
+
+@app.callback(
+    Output(component_id='snapshot-slider', component_property='value'),
+    [Input(component_id='action-entropy', component_property = 'clickData')]
+)
+def update_link_action_entropy_snapshot(clickData):
+    if clickData:
+        return (clickData['points'][0]['x'])
+    return 50
 
 
 @app.callback(
@@ -205,14 +217,13 @@ def update_actions_entropy(frame, snapshot):
      Input(component_id='snapshot-slider', component_property='value')]
 )
 def update_actions(frame, snapshot):
-    logits = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/logits'].value
-    softmax_logits = F.softmax(torch.from_numpy(logits), dim=1).numpy()
+    softmax_logits = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/outs'].value
     traces = []
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for a in range(softmax_logits.shape[1]):
         trace = dict(
-        x = list(range(0, softmax_logits.shape[0], 5)),
-        y = softmax_logits[::5, a],
+        x = list(range(0, softmax_logits.shape[0])),
+        y = softmax_logits[:, a],
         hoverinfo = 'x+y',
         mode = 'lines',
         line = dict(width=0.5),
@@ -220,11 +231,24 @@ def update_actions(frame, snapshot):
         name = actions[a]
     )
         traces.append(trace) 
-    xaxis=dict(
-        title='frame')
-    yaxis=dict(
-        title='Softmax value')
-    figure = go.Figure(data = traces, layout=go.Layout(xaxis=xaxis, yaxis=yaxis))
+    
+    rewards = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/reward'].value
+    reward_trace = dict(
+        y = np.cumsum(rewards),
+        x = list(range(0, softmax_logits.shape[0])),
+        name = 'Ep Reward',
+        yaxis="y2",
+        line = dict(width = 3)
+    )
+    traces.append(reward_trace)
+    layout = go.Layout(xaxis=dict(title='frame'), 
+                       yaxis=dict(title='Softmax value'),
+                       yaxis2=dict(
+                           title='Rewards',
+                           overlaying='y',
+                           side='right'
+                       ))
+    figure = go.Figure(data = traces, layout= layout)
     return figure
 
 # @app.callback(
@@ -249,18 +273,19 @@ def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
 )
 def update_frame_in_slider(frame, snapshot):
     # fetch frame based on snapshot and frame
+    frame = int(frame/5)
     ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
+    print(ins.shape)
     img = ins.copy()
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
-    actor_frames = history['actor_sal'].value
-    critic_frames = history['critic_sal'].value
-    if frame > len(img):
+    if frame > len(ins):
         img = np.zeros((210,160,3))
-        actor_frames = img.copy(); critic_frames = img.copy()
+        actor = img.copy(); critic = img.copy()
     else: 
         img = img[frame]
-        actor = actor_frames[int(frame/100)]; critic=critic_frames[int(frame/100)]
-    
+        actor_frames = history['actor_sal'].value
+        critic_frames = history['critic_sal'].value
+        actor = actor_frames[frame]; critic=critic_frames[frame]
         
     img = saliency_on_frame_abbr(actor, img, 300, 0, 2)
     img = saliency_on_frame_abbr(critic, img, 400, 0 , 0)
@@ -272,19 +297,11 @@ def update_frame_in_slider(frame, snapshot):
 
 @app.callback(
     Output(component_id='regions_subplots', component_property='figure'),
-    [Input(component_id='frame-slider', component_property='value'),
-     Input(component_id='snapshot-slider', component_property='value')]
+    [Input(component_id='snapshot-slider', component_property='value')]
 )
-def update_regions_plots(frame, snapshot):
-    ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
-    img = ins.copy()
-    if frame > len(img):
-        img = np.zeros((210,160,3))
-    else: img = img[frame]
-    
+def update_regions_plots(snapshot):    
     ymid, xmid = 110, 80
     
-    it = 30
 
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
     actor_frames = history['actor_sal'].value
@@ -304,12 +321,12 @@ def update_regions_plots(frame, snapshot):
     a_traces = []
     for i in range(4):
         trace = dict(
-            x = list(range(0, actor_frames.shape[0] * 100, 100)),
+            x = list(range(0, actor_frames.shape[0] * 5, 5)),
             y = (targets[i][0]).sum((1,2)) / actor_tot,
             hoverinfo = 'x+y',
             line = dict(
                 color = ('rgb(24, 12, 205)'),
-                width = 3)
+                width = 1)
         )
 
         a_traces.append(trace)
@@ -317,12 +334,12 @@ def update_regions_plots(frame, snapshot):
     c_traces = []
     for i in range(4):
         trace = dict(
-            x = list(range(0, actor_frames.shape[0] * 100, 100)),
+            x = list(range(0, actor_frames.shape[0] * 5, 5)),
             y = (targets[i][1]).sum((1,2)) / critic_tot,
             hoverinfo = 'x+y',
             line = dict(
                 color = ('rgb(205, 12, 24)'),
-                width = 3)
+                width = 1)
         )
 
         c_traces.append(trace)
@@ -347,6 +364,67 @@ def update_regions_plots(frame, snapshot):
 
     return fig
 
+@app.callback(
+    Output(component_id='regions_bars', component_property='figure'),
+    [Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_regions_bars(snapshot):
+    history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+    actor_frames = history['actor_sal'].value
+    critic_frames = history['critic_sal'].value
+    
+    actor_tot = actor_frames.sum((1,2))
+    critic_tot = critic_frames.sum((1,2))
+   
+    targets = [(actor_frames[:, :40, :40], critic_frames[:, :40, :40]),
+               (actor_frames[:, :40, 40:], critic_frames[:, :40, 40:]),
+               (actor_frames[:, 40:, :40], critic_frames[:, 40:, :40]),
+               (actor_frames[:, 40:, 40:], critic_frames[:, 40:, 40:])]
+    # intensity defined by sum of values in frame region divided by sum of total values of full frame
+    
+    trace_labels = ['TopLeft', 'TopRight', 'BotLeft', 'BotRight']
+    
+    cz = []
+    for i, label in enumerate(trace_labels):
+#         trace = dict(
+#             x = list(range(0, actor_frames.shape[0] * 5, 5)),
+#             y = (targets[i][1]).sum((1,2)) / critic_tot,
+#             hoverinfo = 'x+y',
+#             line = dict(
+#                 color = ('rgb(205, 12, 24)'),
+#                 width = 1)
+#         )
+        cz.append((targets[i][1]).sum((1,2)) / critic_tot)
+    
+    cheatmap = go.Heatmap(
+        z = cz,
+        x = list(range(0, actor_frames.shape[0]*5, 5)),
+        y = trace_labels,
+        colorscale = 'Viridis',
+        yaxis='y2')
+    
+    #data = [trace2, cheatmap]
+    data = [cheatmap]
+    layout = go.Layout(title = 'Critic Saliency Heatmap by Region')
+    fig = go.Figure(data = data, layout = layout)
+    return fig
+
+@app.callback(
+    Output(component_id='rewards_cum', component_property='figure'),
+    [Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_rewards_cum(snapshot):
+    history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+    rewards = history['reward']
+    trace2 = go.Bar(
+    x=list(range(len(rewards))),
+    y= -np.cumsum(rewards)
+    )
+    data = [trace2]
+    layout = go.Layout(bargap = 0, title = 'Cumulative Episode Reward')
+    fig = go.Figure(data = data, layout = layout)
+    return fig
+    
 
 # def update_frame_in_slider(frame, snapshot):
 #     # fetch frame based on snapshot and frame

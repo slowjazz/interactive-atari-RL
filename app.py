@@ -29,9 +29,13 @@ server = app.server
 
 log_data = pd.read_csv("baby-a3c/breakout-v4/log-model7-02-17-20-41.txt")
 log_data.columns = log_data.columns.str.replace(" ", "")
-log_data['frames'] = log_data['frames']/500e3
+epr_xrange = (log_data['frames']/500e3).values[::50]
+epr_vals = log_data['mean-epr'].values[::50]
 
 replays = h5py.File('static/model_rollouts_5.h5','r')
+
+
+rewards_candle_hovertext = [str(i) for i in epr_vals[:-1]]
     
 app.layout = html.Div(children=[
     html.H1(children='Interactive Atari RL'),
@@ -39,25 +43,48 @@ app.layout = html.Div(children=[
 #         dcc.Graph(id = 'action-entropy-long')
 #     ]),
     html.Div([
-        dcc.Graph(id = 'action-entropy')
+        dcc.Graph(id = 'rewards-candlestick',
+                 figure = {
+                     'data': [
+                         go.Ohlc(x = epr_xrange,
+                                 open = epr_vals[:-1],
+                                 high = epr_vals[:-1],
+                                 low = epr_vals[1:],
+                                 close = epr_vals[1:],
+                                 text = rewards_candle_hovertext,
+                                 hoverinfo = 'x+text')
+                     ],
+                     'layout': go.Layout(
+                         xaxis = dict(
+                         rangeslider = dict(
+                             visible = False
+                         )
+                         )
+                     )
+                 }
+
+                 )
     ], style={'border':'1px solid black'}),
     html.Div([
-        dcc.Graph(id='mean-epr_over_eps',
-                           figure={
-                               'data': [
-                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
-                                   go.Scatter(x=log_data['frames'],
-                                              y=log_data['mean-epr'])
-                               ],
-                               'layout': {
-                                   'xaxis': {'title': '500k Frames'},
-                                   'yaxis': {'title': 'Mean reward'},
-                                   'title': 'mean episode rewards over episodes'
-                               }
-                           }, 
-                  style = {'height':'40vh', 'border':'1px solid black'}
-                       )
-    ]),
+        dcc.Graph(id = 'action-entropy')
+    ], style={'border':'1px solid black'}),
+#     html.Div([
+#         dcc.Graph(id='mean-epr_over_eps',
+#                            figure={
+#                                'data': [
+#                                    #py.iplot(log_data['episodes'], log_data['mean-epr'])
+#                                    go.Scatter(x=epr_xrange,
+#                                               y=epr_vals)
+#                                ],
+#                                'layout': {
+#                                    'xaxis': {'title': '500k Frames'},
+#                                    'yaxis': {'title': 'Mean reward'},
+#                                    'title': 'mean episode rewards over frames'
+#                                }
+#                            }, 
+#                   style = {'height':'40vh', 'border':'1px solid black'}
+#                        )
+#     ]),
     html.Div([
         dcc.Graph(id = 'actions')
     ], style={'border':'1px solid black', 'margin-bottom':'20px'}),
@@ -142,6 +169,9 @@ def update_snapshot_slider(snapshot):
             d[k] = {'label': k, 'style':{'color': '#f50'}}
     return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
 
+
+
+
 @app.callback(
     Output(component_id='action-entropy', component_property='figure'),
     [Input(component_id='frame-slider', component_property='value'),
@@ -151,16 +181,26 @@ def update_actions_entropy(frame, snapshot):
     iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
     y_data = []
     ep_lengths = {}
+    x_range = []
+    y_segments = {i:[] for i in range(4)}
+    avg_len = 20
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
     for i in iterations:
         softmax_logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/outs'].value
         y_data.append(softmax_logits)
         ep_lengths[i] = len(softmax_logits)
-    
-    print(ep_lengths)
+        x_range.append(10*np.arange(0, (len(softmax_logits)/avg_len)))
+        ids = np.arange(len(softmax_logits))//avg_len
+        for a in range(4):
+            y_segments[a].append(np.bincount(ids,softmax_logits[:,a])/np.bincount(ids))
+
     entropy_data = np.array([entropy(logits) for logits in y_data])
     softmax_data = np.vstack(y_data)
-    avg_len = 20
+    
+    x_range = np.hstack(x_range)
+    for a in range(4):
+        y_segments[a] = np.hstack(y_segments[a])
+    
     ids = np.arange(len(softmax_data))//avg_len
     series = [entropy_data[:, i] for i in range(4)] 
     data = []
@@ -183,6 +223,16 @@ def update_actions_entropy(frame, snapshot):
             yaxis='y2',
             name = actions[i]
         )
+#         trace2 = dict(
+#                     x = x_range,
+#                     #y = moving_average(softmax_data[:, i], 100),
+#                     y = y_segments[i],
+#                     mode = 'lines',
+#                     line = dict(width=0.5),
+#                     stackgroup = 'one',
+#                     yaxis='y2',
+#                     name = actions[i]
+#                 )
         data.append(trace2)
     
     
@@ -275,7 +325,6 @@ def update_frame_in_slider(frame, snapshot):
     # fetch frame based on snapshot and frame
     frame = int(frame/5)
     ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
-    print(ins.shape)
     img = ins.copy()
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
     if frame > len(ins):
@@ -301,7 +350,7 @@ def update_frame_in_slider(frame, snapshot):
 )
 def update_regions_plots(snapshot):    
     ymid, xmid = 110, 80
-    
+    window_length = 10
 
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
     actor_frames = history['actor_sal'].value
@@ -319,34 +368,109 @@ def update_regions_plots(snapshot):
     trace_labels = ['TopLeft', 'TopRight', 'BotLeft', 'BotRight']
     
     a_traces = []
+    c_traces = []
+    a_ubounds, a_lbounds, c_ubounds, c_lbounds = [],[],[],[]
     for i in range(4):
-        trace = dict(
-            x = list(range(0, actor_frames.shape[0] * 5, 5)),
-            y = (targets[i][0]).sum((1,2)) / actor_tot,
-            hoverinfo = 'x+y',
-            line = dict(
-                color = ('rgb(24, 12, 205)'),
-                width = 1)
-        )
+#         trace = dict(
+#             x = list(range(0, actor_frames.shape[0] * 5, 5)),
+#             y = (targets[i][0]).sum((1,2)) / actor_tot,
+#             hoverinfo = 'x+y',
+#             line = dict(
+#                 color = ('rgb(24, 12, 205)'),
+#                 width = 1)
+#         )
+        
+#         a_traces.append(trace)
+        xrange = list(range(0, actor_frames.shape[0] * 5, 5))
+        data = pd.Series((targets[i][0]).sum((1,2))/actor_tot).rolling(window=window_length)
+        mavg = data.mean()
+        lowerbound = data.min()
+        upperbound = data.max()
 
+        ubound = dict(
+            x = xrange,
+            y = upperbound,
+            hoverinfo = 'x+y',
+            mode='lines',
+            marker=dict(color="#444"),
+            line=dict(width=0),
+            fillcolor='rgba(68, 68, 200, 0.3)',
+            fill='tonexty'
+        )
+        trace = dict(
+            x = xrange,
+            y = mavg,
+            hoverinfo = 'x+y',
+            mode='lines',
+            fillcolor='rgba(68, 68, 200, 0.3)',
+            fill='tonexty',
+            line = dict(
+                color = ('rgb(24, 100, 205)'),
+                width = 2)
+        )
+        lbound = dict(
+            x = xrange,
+            y = lowerbound,
+            marker=dict(color="#444"),
+            line=dict(width=0),
+            mode='lines')
+        
+        a_ubounds.append(ubound)
+        a_lbounds.append(lbound)
         a_traces.append(trace)
         
-    c_traces = []
-    for i in range(4):
-        trace = dict(
-            x = list(range(0, actor_frames.shape[0] * 5, 5)),
-            y = (targets[i][1]).sum((1,2)) / critic_tot,
-            hoverinfo = 'x+y',
-            line = dict(
-                color = ('rgb(205, 12, 24)'),
-                width = 1)
-        )
 
+    for i in range(4):
+#         trace = dict(
+#             x = list(range(0, actor_frames.shape[0] * 5, 5)),
+#             y = (targets[i][1]).sum((1,2)) / critic_tot,
+#             hoverinfo = 'x+y',
+#             line = dict(
+#                 color = ('rgb(205, 12, 24)'),
+#                 width = 1)
+#         )
+
+#         c_traces.append(trace)
+        data = pd.Series((targets[i][1]).sum((1,2))/critic_tot).rolling(window=window_length)
+        mavg = data.mean()
+        lowerbound = data.min()
+        upperbound = data.max()
+        ubound = dict(
+            x = xrange,
+            y = upperbound,
+            hoverinfo = 'x+y',
+            mode='lines',
+            marker=dict(color="#444"),
+            line=dict(width=0),
+            fillcolor='rgba(200, 68, 68, 0.3)',
+            fill='tonexty'
+        )
+        trace = dict(
+            x = xrange,
+            y = mavg,
+            hoverinfo = 'x+y',
+            mode='lines',
+            fillcolor='rgba(200, 68, 68, 0.3)',
+            fill='tonexty',
+            line = dict(
+                color = ('rgb(205, 50, 24)'),
+                width = 2)
+        )
+        lbound = dict(
+            x = xrange,
+            y = lowerbound,
+            marker=dict(color="#444"),
+            line=dict(width=0),
+            mode='lines')
+
+        c_ubounds.append(ubound)
+        c_lbounds.append(lbound)
         c_traces.append(trace)
+    
     fig = tools.make_subplots(rows=2, cols=2, subplot_titles=('Top left', 'Top Right',
                                                           'Bottom left', 'Bottom Right'))
     
-    for series in [a_traces, c_traces]:
+    for series in [ a_lbounds, a_traces, a_ubounds, c_lbounds, c_traces, c_ubounds]:
         fig.append_trace(series[0], 1, 1)
         fig.append_trace(series[1], 1, 2)
         fig.append_trace(series[2], 2, 1)
@@ -387,7 +511,7 @@ def update_regions_bars(snapshot):
     
     actor_tot = actor_frames.sum((1,2))
     critic_tot = critic_frames.sum((1,2))
-   
+    
     targets = [(actor_frames[:, :40, :40], critic_frames[:, :40, :40]),
                (actor_frames[:, :40, 40:], critic_frames[:, :40, 40:]),
                (actor_frames[:, 40:, :40], critic_frames[:, 40:, :40]),

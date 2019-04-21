@@ -33,22 +33,7 @@ log_data.columns = log_data.columns.str.replace(" ", "")
 
 replays = h5py.File('static/model_rollouts_5.h5','r')
 
-
-
 snapshots = [1,19,30,40,50,60,70,80,90,100]
-
-saliency_toplevel = []
-for s in snapshots:
-    print(s)
-    history = replays['models_model7-02-17-20-41/model.'+str(s)+'.tar/history/0']
-    actor_frames, critic_frames = history['actor_sal'].value, history['critic_sal'].value
-    print(actor_frames.shape)
-    actor_tot = actor_frames.sum((1,2))
-    print(actor_tot.shape)
-    critic_tot = critic_frames.sum((1,2))
-    saliency_toplevel.append([actor_tot, critic_tot])
-
-saliency_toplevel
 
 
 app.layout = html.Div(children=[
@@ -185,26 +170,73 @@ def update_rewards_candlestick(frame):
                     low = epr_vals[1:],
                     close = epr_vals[1:],
                     text = rewards_candle_hovertext,
-                    hoverinfo = 'x+text')
+                    hoverinfo = 'x+text',
+                    name = 'Mean EPR')
     data = [trace]
+    
+    saliency_toplevel = []
+    for s in snapshots:
+        print(s)
+        history = replays['models_model7-02-17-20-41/model.'+str(s)+'.tar/history/0']
+        actor_frames, critic_frames = history['actor_sal'].value, history['critic_sal'].value
+        actor_tot_perframe = actor_frames.sum((1,2)).sum()/actor_frames.shape[0]
+
+        critic_tot_perframe = critic_frames.sum((1,2)).sum()/critic_frames.shape[0]
+        
+        saliency_toplevel.append([actor_tot_perframe, critic_tot_perframe])
+    
+    saliency_toplevel = np.array(saliency_toplevel)
+    
+    actor_bars = go.Bar(
+        x = snapshots,
+        y = saliency_toplevel[:,0],
+        name = 'A Sal /frame',
+        yaxis = 'y2',
+        marker = dict(
+            color = 'rgba(68, 68, 230, 0.7)'
+        ),
+        hoverinfo = 'none'
+    )
+    critic_bars = go.Bar(
+        x = snapshots,
+        y = saliency_toplevel[:,1],
+        name = 'C Sal /frame',
+        yaxis='y2',
+        marker = dict(
+            color = 'rgba(240, 68, 68, 0.7)'
+        ),
+        hoverinfo = 'none'
+    )
+    
+    data += [actor_bars, critic_bars]
+    
+    
     layout = go.Layout(
                  title = "Mean episode reward",
                  xaxis = dict(
                      title = "Frames (500k)",
-                 rangeslider = dict(
-                     visible = False
-                 )
+                     rangeslider = dict(
+                         visible = False
+                     )
                  ),
                  yaxis = dict(
                      title = "Reward"
                  ),
+                 yaxis2=dict(
+                     title='Total saliency per frame',
+                     overlaying='y',
+                     side='right',
+                     range = [0, 1200e3],
+                     rangemode = 'nonnegative'
+                 ),
                  margin = dict(
                      l = 50,
-                     r = 10,
+                     r = 60,
                      b = 35,
                      t = 30,
                      pad = 4
-                 )
+                 ),
+                 legend = dict(x = 0.2, y = 1)
              )
     
     figure = go.Figure(data = data, layout = layout)

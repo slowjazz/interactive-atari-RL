@@ -2,7 +2,7 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 import pandas as pd
 import plotly.graph_objs as go
 import plotly.plotly as py
@@ -38,7 +38,7 @@ snapshots = [1,19,30,40,50,60,70,80,90,100]
 
 
 app.layout = html.Div(children=[
-    html.H5(children='Interactive Atari RL', style = {'padding-bottom':'0px', 'margin':'0'}),
+    html.H5(children='Interactive Atari RL', id = 'null',style = {'padding-bottom':'0px', 'margin':'0'}),
 #     html.Div([
 #         dcc.Graph(id = 'action-entropy-long')
 #     ]),
@@ -92,9 +92,15 @@ app.layout = html.Div(children=[
                           )
                  ],
                  style={'border':'1px solid black', 'display':'inline-block'}),
+            
+            html.Div([
+                html.Button('5 frames back', id='back-frame', style={'display':'inline-block','width':'50%'}),
+                html.Button('5 frames next', id='forward-frame', style={'display':'inline-block','width':'50%'}),
+            ],style={'border':'1px solid black', 'display':'block'}), 
+            
             html.Div(html.Img(id = 'screen-ins',
                                    style = {'max-width':'100%', 'max-height':'100%','height':'30em'}),
-                           style = {'border':'1px solid black','width':'20em','margin-top':'2em','height':'100%'}),
+                           style = {'border':'1px solid black','width':'20em','height':'100%'}),
         ], style = {'position':'absolute','top':'8px','border':'1px solid black', 'display':'inline-block','width':'20em','border-bottom':'20em'}),
         html.Div([ # column 2
             html.Div([
@@ -172,18 +178,20 @@ app.layout = html.Div(children=[
     ], style={'padding-bottom':'20px'}),
     html.Div([
         dcc.Graph(id = 'action-entropy')
-    ], style={'border':'1px solid black'})
+    ], style={'border':'1px solid black'}),
+    html.Div(50, id = 'current-frame')
            
 ])
 
 
 
 @app.callback(
-    Output(component_id='frame-val', component_property='children'),
+    [Output(component_id='frame-val', component_property='children'),
+     Output(component_id='current-frame', component_property='children')],
     [Input(component_id='frame-slider', component_property='value')]
 )
 def update_frame_slider(input_value):
-    return 'Frame number of episode: {}'.format(input_value)
+    return 'Frame number of episode: {}'.format(input_value), input_value
 
 @app.callback(
     [Output(component_id='snapshot-val', component_property='children'),
@@ -212,11 +220,44 @@ def update_info_box(input_value):
 def update_info_box_frame(input_value):
     return f'Frame selected: {input_value}'
 
+
+@app.callback(
+    Output(component_id='snapshot-slider', component_property='value'),
+    [Input(component_id='action-entropy', component_property = 'clickData')]
+)
+def update_link_snapshot(entropy_click):
+    if entropy_click:
+        return (entropy_click['points'][0]['x'])
+    return 50
+
+@app.callback(
+    Output(component_id='frame-slider', component_property='value'),
+    [Input(component_id='regions-subplots', component_property = 'clickData'),
+    Input(component_id='back-frame', component_property='n_clicks'),
+    Input(component_id='forward-frame', component_property='n_clicks'),
+    ],
+    [State(component_id='current-frame', component_property='children')],
+)
+def update_link_frame(regions_click, back_click, forward_click,cur_frame):
+    ctx = dash.callback_context
+    # Check if buttons were pressed 
+    for item in ctx.triggered:
+        print(item)
+        if 'back-frame' in item['prop_id'] and item['value']:
+            return cur_frame - 5
+        if 'forward-frame' in item['prop_id'] and item['value']:
+            return cur_frame +5
+    if regions_click:
+        print('regions')
+        return (regions_click['points'][0]['x'])
+    return 50
+
+
 @app.callback(
     Output(component_id='rewards-candlestick', component_property='figure'),
-    [Input(component_id='frame-slider', component_property='value')]
+    [Input(component_id='null', component_property='children')]
 )
-def update_rewards_candlestick(frame):
+def update_rewards_candlestick(start):
     epr_xrange = (log_data['frames']/500e3).values[::40]
     epr_vals = log_data['mean-epr'].values[::40]
     rewards_candle_hovertext = [str(i) for i in epr_vals[:-1]]
@@ -336,6 +377,7 @@ def update_all_cum_rewards(frame):
      Input(component_id='snapshot-slider', component_property='value')]
 )
 def update_actions_entropy(frame, snapshot):
+    return  go.Figure()
     iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
     y_data = []
     ep_lengths = {}
@@ -409,15 +451,6 @@ def update_actions_entropy(frame, snapshot):
     figure = go.Figure(data = data, layout = layout)
     return figure
 
-@app.callback(
-    Output(component_id='snapshot-slider', component_property='value'),
-    [Input(component_id='action-entropy', component_property = 'clickData')]
-)
-def update_link_action_entropy_snapshot(clickData):
-    if clickData:
-        return (clickData['points'][0]['x'])
-    return 50
-
 
 @app.callback(
     Output(component_id='actions', component_property='figure'),
@@ -470,13 +503,6 @@ def update_actions(frame, snapshot):
     figure = go.Figure(data = traces, layout= layout)
     return figure
 
-# @app.callback(
-#     Output(component_id='actions', component_property='figure'),
-#     [Input(component_id='snapshot-slider', component_property='value')]
-# )
-# def update_epr(snapshot):
-
-#     return figure
 
 def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
     S = fudge_factor * S / S.max()
@@ -487,10 +513,11 @@ def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
 
 @app.callback(
     Output(component_id='screen-ins', component_property='src'),
-    [Input(component_id='frame-slider', component_property='value'),
+    [Input(component_id='current-frame', component_property='children'),
      Input('snapshot-slider', 'value')]
 )
 def update_frame_in_slider(frame, snapshot):
+    print('frame update')
     # fetch frame based on snapshot and frame
     frame = int(frame/5)
     ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
@@ -677,15 +704,6 @@ def update_regions_plots(snapshot):
 
     return fig
 
-@app.callback(
-    Output(component_id='frame-slider', component_property='value'),
-    [Input(component_id='regions-subplots', component_property = 'clickData')]
-)
-def update_link_region_plots_frame(clickData):
-    if clickData:
-        return (clickData['points'][0]['x'])
-    return 50
-
 
 @app.callback(
     Output(component_id='regions_bars', component_property='figure'),
@@ -774,19 +792,40 @@ def update_trajectory(snapshot):
     
     actor_sum, critic_sum = actor_tot.sum(), critic_tot.sum()
 
-    actor_trace = go.Scatter(
+#     actor_trace = go.Scatter(
+#         x = list(range(0, actor_frames.shape[0]*5, 5)),
+#         y = actor_tot/actor_tot.sum(),
+#         yaxis='y2'
+#     )
+    
+#     critic_trace = go.Scatter(
+#         x = list(range(0, actor_frames.shape[0]*5, 5)),
+#         y = critic_tot/critic_tot.sum(),
+#         yaxis='y2'
+#     )
+    
+    actor_bars = go.Bar(
         x = list(range(0, actor_frames.shape[0]*5, 5)),
         y = actor_tot/actor_tot.sum(),
-        yaxis='y2'
+        name = 'A Sal',
+        yaxis = 'y2',
+        marker = dict(
+            color = 'rgba(68, 68, 230, 0.7)'
+        ),
+        hoverinfo = 'none'
     )
-    
-    critic_trace = go.Scatter(
+    critic_bars = go.Bar(
         x = list(range(0, actor_frames.shape[0]*5, 5)),
         y = critic_tot/critic_tot.sum(),
-        yaxis='y2'
+        name = 'C Sal',
+        yaxis='y2',
+        marker = dict(
+            color = 'rgba(240, 68, 68, 0.7)'
+        ),
+        hoverinfo = 'none'
     )
     
-    data = [trace, actor_trace, critic_trace]
+    data = [trace, actor_bars, critic_bars]
     layout = go.Layout(title = 'Paddle Position',
                       yaxis2=dict(
                        title='Frame saliency',

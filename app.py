@@ -8,6 +8,7 @@ import plotly.graph_objs as go
 import plotly.plotly as py
 from plotly import tools
 import matplotlib.pyplot as plt
+import PIL
 import h5py
 import numpy as np
 import os, base64
@@ -37,24 +38,24 @@ snapshots = [1,19,30,40,50,60,70,80,90,100]
 
 
 app.layout = html.Div(children=[
-    html.H1(children='Interactive Atari RL'),
+    html.H5(children='Interactive Atari RL', style = {'padding-bottom':'0px', 'margin':'0'}),
 #     html.Div([
 #         dcc.Graph(id = 'action-entropy-long')
 #     ]),
     html.Div([
         html.Div([
             dcc.Graph(id = 'rewards-candlestick',
-                      style={'height':'20em'}
+                      style={'height':'21em'}
                      )
         ], style={'border':'1px solid black', 'display':'inline-block'}),
         html.Div([
-            dcc.Graph(id = 'saliency-bars'
+            dcc.Graph(id = 'all-cum-rewards',
+                      style={'height':'21em'}
                      )
         ], style={'border':'1px solid black', 'display':'inline-block'}),
-    ], style = {'height':'30em','overflow':'auto','display':'block'}),
-    html.Div([
-        dcc.Graph(id = 'action-entropy')
-    ], style={'border':'1px solid black'}),
+        
+    ], style = {'height':'23em','overflow':'auto','display':'block','width':'150em'}),
+    
 #     html.Div([
 #         dcc.Graph(id='mean-epr_over_eps',
 #                            figure={
@@ -72,9 +73,79 @@ app.layout = html.Div(children=[
 #                   style = {'height':'40vh', 'border':'1px solid black'}
 #                        )
 #     ]),
-    html.Div([
-        dcc.Graph(id = 'actions')
-    ], style={'border':'1px solid black', 'margin-bottom':'20px'}),
+    
+    
+    html.Div([ # Big bottom group with 3 columns
+        html.Div([ # column 1
+          
+            html.Div([
+
+                  html.Div(style = {'padding-top':'0em',
+                                    'padding-left':'0',
+                                    },
+                           id = 'info-box-epoch'
+                          ),
+                  html.Div(style = {'padding-top':'0em',
+                                    'padding-left':'0',
+                                    },
+                           id = 'info-box-frame'
+                          )
+                 ],
+                 style={'border':'1px solid black', 'display':'inline-block'}),
+            html.Div(html.Img(id = 'screen-ins',
+                                   style = {'max-width':'100%', 'max-height':'100%','height':'30em'}),
+                           style = {'border':'1px solid black','width':'20em','margin-top':'2em','height':'100%'}),
+        ], style = {'position':'absolute','top':'8px','border':'1px solid black', 'display':'inline-block','width':'20em','border-bottom':'20em'}),
+        html.Div([ # column 2
+            html.Div([
+                dcc.Graph(id = 'actions',
+                          style={'border':'1px solid black','height':'23em','display':'block'})
+                    ], ),
+            html.Div([
+                dcc.Graph(id = 'trajectory',
+                         style = {'border':'1px solid black'})
+            ])
+            
+        ], style = {'position':'absolute','margin-left':'21em','border':'1px solid black', 'display':'inline-block'}),
+        html.Div([ # column 3
+            html.Div([
+                dcc.Graph(id = 'regions_bars',
+                         style = {'border':'1px solid black', 'height':'23em'})
+            ]),
+            html.Div([
+                dcc.Graph(id = 'rewards-heatmap',
+                          style={'border':'1px solid black', 'height':'10em'})
+            ]),
+            
+            html.Div([
+                dcc.Graph(id = 'regions-subplots',
+                         style = {'height':'23em'})
+            ], style = {'display':'block','border':'1px solid black'})
+            
+        ], style = {'border':'1px solid black', 'display':'inline-block','margin-left':'70em'})  
+    ], style = {'position':'relative'}),
+    
+    html.Div(children=[
+                       dcc.Graph(
+                           id='loss_over_eps',
+                           figure={
+                               'data': [
+                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
+                                   go.Scatter(x=log_data['frames'],
+                                              y=log_data['run-loss'])
+
+                               ],
+                               'layout': {
+                                   'xaxis': {'title': '500k Frames'},
+                                   'yaxis': {'title': 'Loss'},
+                                   'title': 'loss over episodes'
+                               }
+                           },
+                           style={'float':'right','width':'50%'}
+                       )
+                       ]
+           
+             ),
     html.Div([
         html.Div([
             html.Div(id='frame-val'),
@@ -100,37 +171,8 @@ app.layout = html.Div(children=[
         ])
     ], style={'padding-bottom':'20px'}),
     html.Div([
-        html.Div(html.Img(id = 'screen-ins',width='320'), style = {'display':'inline-block'}),
-        html.Div([dcc.Graph(id = 'regions-subplots')],
-                 style = {'display':'inline-block'}
-                  ),
-        html.Div([dcc.Graph(id = 'regions_bars'),
-                  dcc.Graph(id = 'rewards_cum')],
-                           
-    style={'display':'inline-block', 'border':'1px solid black', 'margin':'25px'} 
-                )
-    ]),
-    html.Div(children=[
-                       dcc.Graph(
-                           id='loss_over_eps',
-                           figure={
-                               'data': [
-                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
-                                   go.Scatter(x=log_data['frames'],
-                                              y=log_data['run-loss'])
-
-                               ],
-                               'layout': {
-                                   'xaxis': {'title': '500k Frames'},
-                                   'yaxis': {'title': 'Loss'},
-                                   'title': 'loss over episodes'
-                               }
-                           },
-                           style={'float':'right','width':'50%'}
-                       )
-                       ]
-           
-             )
+        dcc.Graph(id = 'action-entropy')
+    ], style={'border':'1px solid black'})
            
 ])
 
@@ -155,6 +197,20 @@ def update_snapshot_slider(snapshot):
         if k > length:
             d[k] = {'label': k, 'style':{'color': '#f50'}}
     return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
+
+@app.callback(
+    Output(component_id='info-box-epoch', component_property='children'),
+    [Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_info_box(input_value):
+    return f'Epoch selected: {input_value}'
+
+@app.callback(
+    Output(component_id='info-box-frame', component_property='children'),
+    [Input(component_id='frame-slider', component_property='value')]
+)
+def update_info_box_frame(input_value):
+    return f'Frame selected: {input_value}'
 
 @app.callback(
     Output(component_id='rewards-candlestick', component_property='figure'),
@@ -240,6 +296,38 @@ def update_rewards_candlestick(frame):
              )
     
     figure = go.Figure(data = data, layout = layout)
+    return figure
+
+@app.callback(
+    Output(component_id='all-cum-rewards', component_property='figure'),
+    [Input(component_id='frame-slider', component_property='value')]
+)
+def update_all_cum_rewards(frame):
+    data = []
+    for s in snapshots: 
+        rewards = replays['models_model7-02-17-20-41/model.'+str(s)+'.tar/history/0/reward'].value
+        reward_trace = dict(
+            y = np.cumsum(rewards),
+            x = list(range(0, rewards.shape[0])),
+            name = f'Epoch {s}',
+            line = dict(width = 3)
+        )
+        data.append(reward_trace)
+    
+    layout = go.Layout(title = 'Cumulative reward by epoch replay',
+                       xaxis=dict(title='Episode Frame'), 
+                       yaxis=dict(title='Reward'),
+                       margin = dict(
+                         l = 50,
+                         r = 40,
+                         b = 35,
+                         t = 30,
+                         pad = 4
+                       ),
+                       #legend = dict(x = 0.1, y = 1),
+                       showlegend = False
+                       )
+    figure = go.Figure(data = data, layout= layout)
     return figure
 
 @app.callback(
@@ -367,7 +455,18 @@ def update_actions(frame, snapshot):
                            title='Rewards',
                            overlaying='y',
                            side='right'
-                       ))
+                       ),
+                      margin = dict(
+                         l = 50,
+                         r = 40,
+                         b = 35,
+                         t = 30,
+                         pad = 4
+                       ),
+                       legend = dict(
+                           orientation = "h",
+                           y = 1.13)
+                      )
     figure = go.Figure(data = traces, layout= layout)
     return figure
 
@@ -409,9 +508,14 @@ def update_frame_in_slider(frame, snapshot):
     img = saliency_on_frame_abbr(actor, img, 300, 0, 2)
     img = saliency_on_frame_abbr(critic, img, 400, 0 , 0)
     
+    
     buffer = BytesIO()
-    plt.imsave(buffer, img)
+    #plt.imsave(buffer, img)
+    img = PIL.Image.fromarray(img) #.resize((int(img.shape[1]*0.6), int(img.shape[0]*0.6)))
+    img.save(buffer, "PNG")
     img_str = base64.b64encode(buffer.getvalue()).decode()
+    #img_str = base64.b64encode(img.tobytes()).decode()
+    
     return 'data:image/png;base64,{}'.format(img_str)
 
 @app.callback(
@@ -537,8 +641,14 @@ def update_regions_plots(snapshot):
         c_lbounds.append(lbound)
         c_traces.append(trace)
     
-    fig = tools.make_subplots(rows=2, cols=2, subplot_titles=('Top left', 'Top Right',
-                                                          'Bottom left', 'Bottom Right'))
+    fig = tools.make_subplots(rows=2, cols=2, 
+                             horizontal_spacing = 0.05,
+                             vertical_spacing = 0.05,
+#                              subplot_titles=('Top left', 
+#                                              'Top Right',
+#                                              'Bottom left', 
+#                                              'Bottom Right'),
+                             )
     
     for series in [ a_lbounds, a_traces, a_ubounds, c_lbounds, c_traces, c_ubounds]:
         fig.append_trace(series[0], 1, 1)
@@ -546,9 +656,16 @@ def update_regions_plots(snapshot):
         fig.append_trace(series[2], 2, 1)
         fig.append_trace(series[3], 2, 2)
     
-    fig['layout'].update(title='Saliency intensity by quarter region', 
+    fig['layout'].update(title='Moving average Saliency intensity by quarter region', 
                          showlegend=False,
-                         clickmode = 'event+select')
+                         clickmode = 'event+select',
+                         margin = dict(
+                             l = 50,
+                             r = 40,
+                             b = 35,
+                             t = 34,
+                             pad = 4
+                           ))
     fig['layout']['xaxis3'].update(title='Frame')
     fig['layout']['xaxis4'].update(title='Frame')
     fig['layout']['yaxis1'].update(title='Intensity', range=[0,1])
@@ -611,39 +728,120 @@ def update_regions_bars(snapshot):
     
     #data = [trace2, cheatmap]
     data = [cheatmap]
-    layout = go.Layout(title = 'Critic Saliency Heatmap by Region')
+    layout = go.Layout(title = 'Critic Saliency Heatmap by Region',
+                       margin = dict(
+                         l = 65,
+                         r = 60,
+                         b = 35,
+                         t = 35,
+                         pad = 4
+                       ),)
     fig = go.Figure(data = data, layout = layout)
     return fig
 
 @app.callback(
-    Output(component_id='rewards_cum', component_property='figure'),
+    Output(component_id='trajectory', component_property='figure'),
     [Input(component_id='snapshot-slider', component_property='value')]
 )
-def update_rewards_cum(snapshot):
+def update_trajectory(snapshot):
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
-    rewards = history['reward']
-    trace2 = go.Bar(
-    x=list(range(len(rewards))),
-    y= -np.cumsum(rewards)
+    softmax_logits = history['outs'].value
+    actions = np.argmax(softmax_logits, axis=1)
+    positions = np.zeros(softmax_logits.shape[0]+1)
+    # movements are in pixels, but approximations, because position doesn't seem fully deterministic
+    for i in range(len(actions)):
+        if actions[i]==2: # go right
+            positions[i+1] = max(positions[i] - 8, -96)
+        elif actions[i] ==3: # go left
+            positions[i+1] = min(positions[i] + 8, 96)
+        else:
+            positions[i+1] = positions[i]
+    
+    for i in range(2,len(positions),2):
+        if abs(positions[i] - positions[i-2]) <16:
+            positions[i] = positions[i-1]
+    
+    
+    trace = go.Scatter(
+        x = list(range(positions.shape[0])),
+        y = positions,
     )
-    data = [trace2]
-    layout = go.Layout(bargap = 0, title = 'Cumulative Episode Reward')
+    actor_frames, critic_frames = history['actor_sal'].value, history['critic_sal'].value
+    
+    actor_tot = actor_frames.sum((1,2))
+
+    critic_tot = critic_frames.sum((1,2))
+    
+    actor_sum, critic_sum = actor_tot.sum(), critic_tot.sum()
+
+    actor_trace = go.Scatter(
+        x = list(range(0, actor_frames.shape[0]*5, 5)),
+        y = actor_tot/actor_tot.sum(),
+        yaxis='y2'
+    )
+    
+    critic_trace = go.Scatter(
+        x = list(range(0, actor_frames.shape[0]*5, 5)),
+        y = critic_tot/critic_tot.sum(),
+        yaxis='y2'
+    )
+    
+    data = [trace, actor_trace, critic_trace]
+    layout = go.Layout(title = 'Paddle Position',
+                      yaxis2=dict(
+                       title='Frame saliency',
+                       overlaying='y',
+                       side='right',
+                       #range = [0, 1200e3],
+                       #rangemode = 'nonnegative'
+                         ),
+                      margin = dict(
+                         l = 55,
+                         r = 50,
+                         b = 35,
+                         t = 35,
+                         pad = 4
+                       ),
+                      showlegend=False)
     fig = go.Figure(data = data, layout = layout)
     return fig
     
-
-# def update_frame_in_slider(frame, snapshot):
-#     # fetch frame based on snapshot and frame
-#     images = 'static/images'
-#     avail = os.listdir(images)
-#     if str(snapshot) not in avail:
-#         return os.path.join(images, 'dead.png') # some default val, return something else later
+@app.callback(
+    Output(component_id='rewards-heatmap', component_property='figure'),
+    [Input(component_id='snapshot-slider', component_property='value')]
+)
+def update_rewards_heatmap(snapshot):
+    history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+    rewards = history['reward'].value
+    trace = go.Scatter(
+        x = list(range(len(rewards))),
+        y = rewards,
+    )
+    data = [trace]
     
-#     snapshot_dir = os.path.join(images, str(snapshot))
-#     if str(frame) not in [name.split('.')[0] for name in os.listdir(snapshot_dir)]:
-#         return os.path.join(images, 'dead.png') # if frame not there
-#     #print(os.path.join(snapshot_dir, str(frame)+'.png'))
-#     return os.path.join(snapshot_dir, str(frame)+'.png')
+    layout = go.Layout(title = 'Rewards',
+                      margin = dict(
+                             l = 50,
+                             r = 40,
+                             b = 20,
+                             t = 6,
+                             pad = 4
+                           ))
+    fig = go.Figure(data = data, layout = layout)
+    return fig
+            
+
+# def update_rewards_cum(snapshot):
+#     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+#     rewards = history['reward']
+#     trace2 = go.Bar(
+#     x=list(range(len(rewards))),
+#     y= -np.cumsum(rewards)
+#     )
+#     data = [trace2]
+#     layout = go.Layout(bargap = 0, title = 'Cumulative Episode Reward')
+#     fig = go.Figure(data = data, layout = layout)
+#     return fig
     
 
 if __name__ == '__main__':

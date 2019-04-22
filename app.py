@@ -223,33 +223,46 @@ def update_info_box_frame(input_value):
 
 @app.callback(
     Output(component_id='snapshot-slider', component_property='value'),
-    [Input(component_id='action-entropy', component_property = 'clickData')]
+    [Input(component_id='action-entropy', component_property = 'clickData'),
+     Input('rewards-candlestick', 'clickData'),]
 )
-def update_link_snapshot(entropy_click):
+def update_link_snapshot(entropy_click, candle_click):    
     if entropy_click:
         return (entropy_click['points'][0]['x'])
+    if candle_click:
+        return (candle_click['points'][0]['x'])
     return 50
+
+def myround(x, base=5):
+    return base * round(x/base)
 
 @app.callback(
     Output(component_id='frame-slider', component_property='value'),
     [Input(component_id='regions-subplots', component_property = 'clickData'),
+     Input('actions', 'clickData'),
+     Input('trajectory', 'clickData'),
+     Input('regions_bars', 'clickData'),
     Input(component_id='back-frame', component_property='n_clicks'),
     Input(component_id='forward-frame', component_property='n_clicks'),
     ],
     [State(component_id='current-frame', component_property='children')],
 )
-def update_link_frame(regions_click, back_click, forward_click,cur_frame):
+def update_link_frame(regions_click, actions_click, trajectory_click, bars_click, back_click, forward_click,cur_frame):
     ctx = dash.callback_context
     # Check if buttons were pressed 
     for item in ctx.triggered:
-        print(item)
         if 'back-frame' in item['prop_id'] and item['value']:
             return cur_frame - 5
         if 'forward-frame' in item['prop_id'] and item['value']:
             return cur_frame +5
     if regions_click:
-        print('regions')
         return (regions_click['points'][0]['x'])
+    if actions_click:
+        return myround(actions_click['points'][0]['x'])
+    if trajectory_click:
+        return myround(trajectory_click['points'][0]['x'])
+    if bars_click:
+        return (bars_click['points'][0]['x'])
     return 50
 
 
@@ -775,14 +788,14 @@ def update_trajectory(snapshot):
         else:
             positions[i+1] = positions[i]
     
-    for i in range(2,len(positions),2):
-        if abs(positions[i] - positions[i-2]) <16:
-            positions[i] = positions[i-1]
+#     for i in range(2,len(positions),2):
+#         if positions[i-3:i]
+#             positions[i] = positions[i-1]
     
     
     trace = go.Scatter(
-        x = list(range(positions.shape[0])),
-        y = positions,
+        x = list(range(positions.shape[0]))[::10],
+        y = positions[::10],
     )
     actor_frames, critic_frames = history['actor_sal'].value, history['critic_sal'].value
     
@@ -790,7 +803,7 @@ def update_trajectory(snapshot):
 
     critic_tot = critic_frames.sum((1,2))
     
-    actor_sum, critic_sum = actor_tot.sum(), critic_tot.sum()
+    actor_sum, critic_sum = actor_tot.max() , critic_tot.max()
 
 #     actor_trace = go.Scatter(
 #         x = list(range(0, actor_frames.shape[0]*5, 5)),
@@ -806,7 +819,7 @@ def update_trajectory(snapshot):
     
     actor_bars = go.Bar(
         x = list(range(0, actor_frames.shape[0]*5, 5)),
-        y = actor_tot/actor_tot.sum(),
+        y = actor_tot/actor_sum,
         name = 'A Sal',
         yaxis = 'y2',
         marker = dict(
@@ -816,7 +829,7 @@ def update_trajectory(snapshot):
     )
     critic_bars = go.Bar(
         x = list(range(0, actor_frames.shape[0]*5, 5)),
-        y = critic_tot/critic_tot.sum(),
+        y = critic_tot/critic_sum,
         name = 'C Sal',
         yaxis='y2',
         marker = dict(
@@ -827,6 +840,9 @@ def update_trajectory(snapshot):
     
     data = [trace, actor_bars, critic_bars]
     layout = go.Layout(title = 'Paddle Position',
+                       xaxis=dict(
+                           title='Frame'
+                       ),
                       yaxis2=dict(
                        title='Frame saliency',
                        overlaying='y',
@@ -863,7 +879,7 @@ def update_rewards_heatmap(snapshot):
                              l = 50,
                              r = 40,
                              b = 20,
-                             t = 6,
+                             t = 20,
                              pad = 4
                            ))
     fig = go.Figure(data = data, layout = layout)

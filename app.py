@@ -43,9 +43,6 @@ snapshots = [1,19,30,40,50,60,70,80,90,100]
 
 app.layout = html.Div(children=[
     html.H5(children='Interactive Atari RL', id = 'null',style = {'padding-bottom':'0px', 'margin':'0'}),
-#     html.Div([
-#         dcc.Graph(id = 'action-entropy-long')
-#     ]),
     html.Div([
         html.Div([
             dcc.Graph(id = 'rewards-candlestick',
@@ -59,25 +56,6 @@ app.layout = html.Div(children=[
         ], style={'border':'1px solid black', 'display':'inline-block'}),
         
     ], style = {'height':'23em','overflow':'auto','display':'block','width':'150em'}),
-    
-#     html.Div([
-#         dcc.Graph(id='mean-epr_over_eps',
-#                            figure={
-#                                'data': [
-#                                    #py.iplot(log_data['episodes'], log_data['mean-epr'])
-#                                    go.Scatter(x=epr_xrange,
-#                                               y=epr_vals)
-#                                ],
-#                                'layout': {
-#                                    'xaxis': {'title': '500k Frames'},
-#                                    'yaxis': {'title': 'Mean reward'},
-#                                    'title': 'mean episode rewards over frames'
-#                                }
-#                            }, 
-#                   style = {'height':'40vh', 'border':'1px solid black'}
-#                        )
-#     ]),
-    
     
     html.Div([ # Big bottom group with 3 columns
         html.Div([ # column 1
@@ -106,6 +84,17 @@ app.layout = html.Div(children=[
                                    style = {'max-width':'100%', 'max-height':'100%','height':'30em'}),
                            style = {'border':'1px solid black','width':'20em','height':'100%'}),
         ], style = {'position':'absolute','top':'8px','border':'1px solid black', 'display':'inline-block','width':'20em','border-bottom':'20em'}),
+        html.Div([ # column 2a
+            html.Div([
+                dcc.Graph(id = 'gantt',
+                          style={'border':'1px solid black','height':'18em','display':'block'})
+                    ], style = {'width':'60em'}),
+             html.Div([
+                dcc.Graph(id = 'gantt2',
+                          style={'border':'1px solid black','height':'18em','display':'block'})
+                    ], style = {'width':'60em'}),
+            
+        ], style = {'position':'absolute','margin-left':'21em','border':'1px solid black', 'display':'inline-block'}),
         html.Div([ # column 2
             html.Div([
                 dcc.Graph(id = 'actions',
@@ -116,7 +105,7 @@ app.layout = html.Div(children=[
                          style = {'border':'1px solid black'})
             ])
             
-        ], style = {'position':'absolute','margin-left':'21em','border':'1px solid black', 'display':'inline-block'}),
+        ], style = {'position':'absolute','margin-left':'80em','border':'1px solid black', 'display':'inline-block'}),
         html.Div([ # column 3
             html.Div([
                 dcc.Graph(id = 'regions_bars',
@@ -132,7 +121,7 @@ app.layout = html.Div(children=[
                          style = {'height':'23em'})
             ], style = {'display':'block','border':'1px solid black'})
             
-        ], style = {'border':'1px solid black', 'display':'inline-block','margin-left':'70em'})  
+        ], style = {'border':'1px solid black', 'display':'inline-block','margin-left':'130em'})  
     ], style = {'position':'relative'}),
     
 #     html.Div(children=[
@@ -468,7 +457,7 @@ def update_actions_entropy(null):
                        clickmode = 'event+select')
     figure = go.Figure(data = data, layout = layout)
     return figure
-
+    
 
 @app.callback(
     Output(component_id='actions', component_property='figure'),
@@ -561,6 +550,128 @@ def update_frame_in_slider(frame, snapshot):
     #img_str = base64.b64encode(img.tobytes()).decode()
     
     return 'data:image/png;base64,{}'.format(img_str)
+
+def actions_to_marker(actions):
+    action_colors = {0: "rgb(87, 137, 224)", 1:'rgb(247, 227, 116)', 2:'rgb(59, 229, 73)', 3:'rgb(232, 73, 64)'}
+    colors = [action_colors[i] for i in actions]
+    return dict(color = colors, size = 8, line = dict(width = 1))
+    if actions == 0: # NOOP
+        return dict(color="#444", line = dict(color='rgb(25,25,25)', width=1))
+    else:
+        return dict(color='rgb(24, 100, 205)', line = dict(color='rgb(25,25,25)', width=1))
+
+
+
+def gantt_figures(snapshot):
+    ymid, xmid = 80, 80
+
+    action_colors = {0: "#444", 1:'rgb(24, 100, 205)', 2:'rgb(24, 100, 205)', 3:'rgb(24, 100, 205)'}
+    
+    def chart_data(snapshot):
+        history1 = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+        rewards1 = history1['reward'].value
+
+        actions1ix = np.where(np.max(history1['outs'].value, axis = 1) > 0.9)
+        actions1types = np.argmax(history1['outs'].value[actions1ix], axis=1)
+
+        csaliency1 = history1['critic_sal'].value
+        csaliency1sums = csaliency1.sum((1,2))
+        csaliency1max = csaliency1sums.max()
+        
+        csaliency1ix = np.where(csaliency1sums > 0.3*csaliency1max)
+        csaliency1frames = csaliency1[csaliency1ix]
+        
+        csaliency1regions = np.array([[x[:ymid, :xmid].sum(), x[:ymid, xmid:].sum(), x[ymid:, :xmid].sum(), x[ymid:, xmid:].sum()] for x in csaliency1frames])
+        
+        csaliency1regions /= csaliency1max
+    
+        # convert n x n_regions array of saliency values to traces that look like the 2x2 saliency grids along a time line
+        # example: we pass in n x [1,2,3,4] as values, where 1,2,3,4 are total saliency values of top left, top right, bot left, bot right regions
+        def plot_region_dots(region_vals, region_ix):
+            xvals = []
+            yvals = np.tile(np.array([1,1,0,0]), len(region_vals))
+            opacities = ['rgba(200, 68, 68,'+ str(i) + ')' for i in region_vals.flatten()]
+            
+            for ix in region_ix[0]:
+                xvals += [ix*5, ix*5+50, ix*5, ix*5+50]
+            
+            return xvals, yvals, dict(color= opacities, size = 14, line = dict(width = 1), symbol = 'square')
+    
+    
+   
+        t1infox, t1infoy, markers = plot_region_dots(csaliency1regions, csaliency1ix)
+
+        return (t1infox, t1infoy, markers), (list(range(len(rewards1))), rewards1), (actions1ix[0], rewards1[actions1ix], actions_to_marker(actions1types))
+
+    trace1sal, trace1rewards, trace1actions = chart_data(snapshot)
+    
+    trace1info = go.Scatter(
+        mode = 'markers',
+        x = trace1sal[0],
+        y = trace1sal[1],
+        marker = trace1sal[2],
+        cliponaxis= False
+    )
+    
+    trace1 = go.Scatter(
+        x = trace1rewards[0],
+        y = trace1rewards[1],
+    )
+    trace1actions = go.Scatter(
+        mode = 'markers',
+        x = trace1actions[0],
+        y = trace1actions[1],
+        opacity = 1,
+        marker = trace1actions[2],
+        cliponaxis= False
+    )
+
+    fig = tools.make_subplots(rows=2, cols=1, vertical_spacing=0.05,
+                              shared_xaxes = True, shared_yaxes = True)
+
+    
+    fig.append_trace(trace1info, 1, 1)
+    fig.append_trace(trace1, 2, 1)
+    fig.append_trace(trace1actions, 2, 1)    
+
+    fig['layout'].update(title='"Gantt"', 
+                         showlegend=False,
+                         clickmode = 'event+select',
+                         margin = dict(
+                             l = 50,
+                             r = 40,
+                             b = 35,
+                             t = 34,
+                             pad = 4
+                           ))
+
+    #fig['layout']['xaxis2'].update(anchor='x1')
+    fig['layout']['yaxis1'].update(tickmode='linear',
+                                    ticks='outside',
+                                    tick0=0,
+                                    dtick=2,
+                                  showticklabels=False)
+    
+    fig['layout']['yaxis2'].update(title='', range=[0, 7], autorange=False)
+
+    return fig
+
+@app.callback(
+    Output(component_id='gantt', component_property='figure'),
+    [Input(component_id='null', component_property='children')]
+)
+def update_gantt1(null):
+    fig = gantt_figures(90)
+    return fig
+
+@app.callback(
+    Output(component_id='gantt2', component_property='figure'),
+    [Input(component_id='null', component_property='children')]
+)
+def update_gantt2(null):
+    fig = gantt_figures(50)
+    return fig
+
 
 @app.callback(
     Output(component_id='regions-subplots', component_property='figure'),

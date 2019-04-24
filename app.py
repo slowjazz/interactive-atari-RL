@@ -14,6 +14,7 @@ import numpy as np
 import os, base64
 from io import BytesIO
 from scipy.stats import entropy
+import tables
 
 import torch # Unsure of Overhead
 from torch.autograd import Variable
@@ -32,7 +33,10 @@ log_data = pd.read_csv("baby-a3c/breakout-v4/log-model7-02-17-20-41.txt")
 log_data.columns = log_data.columns.str.replace(" ", "")
 
 
-replays = h5py.File('static/model_rollouts_5.h5','r')
+#replays = tables.open_file("static/model_rollouts_5.h5",'r', driver="H5FD_CORE")
+
+
+replays = h5py.File('static/model_rollouts_5.h5','r', driver='core')
 
 snapshots = [1,19,30,40,50,60,70,80,90,100]
 
@@ -131,27 +135,27 @@ app.layout = html.Div(children=[
         ], style = {'border':'1px solid black', 'display':'inline-block','margin-left':'70em'})  
     ], style = {'position':'relative'}),
     
-    html.Div(children=[
-                       dcc.Graph(
-                           id='loss_over_eps',
-                           figure={
-                               'data': [
-                                   #py.iplot(log_data['episodes'], log_data['mean-epr'])
-                                   go.Scatter(x=log_data['frames'],
-                                              y=log_data['run-loss'])
+#     html.Div(children=[
+#                        dcc.Graph(
+#                            id='loss_over_eps',
+#                            figure={
+#                                'data': [
+#                                    #py.iplot(log_data['episodes'], log_data['mean-epr'])
+#                                    go.Scatter(x=log_data['frames'],
+#                                               y=log_data['run-loss'])
 
-                               ],
-                               'layout': {
-                                   'xaxis': {'title': '500k Frames'},
-                                   'yaxis': {'title': 'Loss'},
-                                   'title': 'loss over episodes'
-                               }
-                           },
-                           style={'float':'right','width':'50%'}
-                       )
-                       ]
+#                                ],
+#                                'layout': {
+#                                    'xaxis': {'title': '500k Frames'},
+#                                    'yaxis': {'title': 'Loss'},
+#                                    'title': 'loss over episodes'
+#                                }
+#                            },
+#                            style={'float':'right','width':'50%'}
+#                        )
+#                        ]
            
-             ),
+#              ),
     html.Div([
         html.Div([
             html.Div(id='frame-val'),
@@ -242,17 +246,18 @@ def myround(x, base=5):
      Input('actions', 'clickData'),
      Input('trajectory', 'clickData'),
      Input('regions_bars', 'clickData'),
+      Input('rewards-heatmap', 'clickData'),
     Input(component_id='back-frame', component_property='n_clicks'),
     Input(component_id='forward-frame', component_property='n_clicks'),
     ],
     [State(component_id='current-frame', component_property='children')],
 )
-def update_link_frame(regions_click, actions_click, trajectory_click, bars_click, back_click, forward_click,cur_frame):
+def update_link_frame(regions_click, actions_click, trajectory_click, bars_click, rewards_click, back_click, forward_click,cur_frame):
     ctx = dash.callback_context
     # Check if buttons were pressed 
     for item in ctx.triggered:
         if 'back-frame' in item['prop_id'] and item['value']:
-            return cur_frame - 5
+            return max(0, cur_frame - 5)
         if 'forward-frame' in item['prop_id'] and item['value']:
             return cur_frame +5
     if regions_click:
@@ -263,6 +268,8 @@ def update_link_frame(regions_click, actions_click, trajectory_click, bars_click
         return myround(trajectory_click['points'][0]['x'])
     if bars_click:
         return (bars_click['points'][0]['x'])
+    if rewards_click:
+        return myround(rewards_click['points'][0]['x'])
     return 50
 
 
@@ -354,9 +361,9 @@ def update_rewards_candlestick(start):
 
 @app.callback(
     Output(component_id='all-cum-rewards', component_property='figure'),
-    [Input(component_id='frame-slider', component_property='value')]
+    [Input(component_id='null', component_property='children')]
 )
-def update_all_cum_rewards(frame):
+def update_all_cum_rewards(null):
     data = []
     for s in snapshots: 
         rewards = replays['models_model7-02-17-20-41/model.'+str(s)+'.tar/history/0/reward'].value
@@ -386,11 +393,9 @@ def update_all_cum_rewards(frame):
 
 @app.callback(
     Output(component_id='action-entropy', component_property='figure'),
-    [Input(component_id='frame-slider', component_property='value'),
-     Input(component_id='snapshot-slider', component_property='value')]
+    [Input(component_id='null', component_property='children')]
 )
-def update_actions_entropy(frame, snapshot):
-    return  go.Figure()
+def update_actions_entropy(null):
     iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
     y_data = []
     ep_lengths = {}
@@ -467,10 +472,9 @@ def update_actions_entropy(frame, snapshot):
 
 @app.callback(
     Output(component_id='actions', component_property='figure'),
-    [Input(component_id='frame-slider', component_property='value'),
-     Input(component_id='snapshot-slider', component_property='value')]
+    [Input(component_id='snapshot-slider', component_property='value')]
 )
-def update_actions(frame, snapshot):
+def update_actions(snapshot):
     softmax_logits = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/outs'].value
     traces = []
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
@@ -545,14 +549,14 @@ def update_frame_in_slider(frame, snapshot):
         critic_frames = history['critic_sal'].value
         actor = actor_frames[frame]; critic=critic_frames[frame]
         
-    img = saliency_on_frame_abbr(actor, img, 300, 0, 2)
-    img = saliency_on_frame_abbr(critic, img, 400, 0 , 0)
+    img = saliency_on_frame_abbr(actor, img, 500, 0, 2)
+    img = saliency_on_frame_abbr(critic, img, 500, 0 , 0)
     
     
     buffer = BytesIO()
-    #plt.imsave(buffer, img)
-    img = PIL.Image.fromarray(img) #.resize((int(img.shape[1]*0.6), int(img.shape[0]*0.6)))
-    img.save(buffer, "PNG")
+    plt.imsave(buffer, img)
+    #img = PIL.Image.fromarray(img) #.resize((int(img.shape[1]*0.6), int(img.shape[0]*0.6)))
+    #img.save(buffer, "PNG")
     img_str = base64.b64encode(buffer.getvalue()).decode()
     #img_str = base64.b64encode(img.tobytes()).decode()
     
@@ -563,7 +567,7 @@ def update_frame_in_slider(frame, snapshot):
     [Input(component_id='snapshot-slider', component_property='value')]
 )
 def update_regions_plots(snapshot):    
-    ymid, xmid = 110, 80
+    ymid, xmid = 80, 80
     window_length = 10
 
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
@@ -573,10 +577,10 @@ def update_regions_plots(snapshot):
     actor_tot = actor_frames.sum((1,2))
     critic_tot = critic_frames.sum((1,2))
    
-    targets = [(actor_frames[:, :40, :40], critic_frames[:, :40, :40]),
-               (actor_frames[:, :40, 40:], critic_frames[:, :40, 40:]),
-               (actor_frames[:, 40:, :40], critic_frames[:, 40:, :40]),
-               (actor_frames[:, 40:, 40:], critic_frames[:, 40:, 40:])]
+    targets = [(actor_frames[:, :ymid, :xmid], critic_frames[:, :ymid, :xmid]),
+               (actor_frames[:, :ymid, xmid:], critic_frames[:, :ymid, xmid:]),
+               (actor_frames[:, ymid:, :xmid], critic_frames[:, ymid:, :xmid]),
+               (actor_frames[:, ymid:, xmid:], critic_frames[:, ymid:, xmid:])]
     # intensity defined by sum of values in frame region divided by sum of total values of full frame
     
     trace_labels = ['TopLeft', 'TopRight', 'BotLeft', 'BotRight']
@@ -723,6 +727,7 @@ def update_regions_plots(snapshot):
     [Input(component_id='snapshot-slider', component_property='value')]
 )
 def update_regions_bars(snapshot):
+    ymid, xmid = 80, 80
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
     actor_frames = history['actor_sal'].value
     critic_frames = history['critic_sal'].value
@@ -730,15 +735,15 @@ def update_regions_bars(snapshot):
     actor_tot = actor_frames.sum((1,2))
     critic_tot = critic_frames.sum((1,2))
     
-    targets = [(actor_frames[:, :40, :40], critic_frames[:, :40, :40]),
-               (actor_frames[:, :40, 40:], critic_frames[:, :40, 40:]),
-               (actor_frames[:, 40:, :40], critic_frames[:, 40:, :40]),
-               (actor_frames[:, 40:, 40:], critic_frames[:, 40:, 40:])]
+    targets = [(actor_frames[:, :ymid, :xmid], critic_frames[:, :ymid, :xmid]),
+               (actor_frames[:, :ymid, xmid:], critic_frames[:, :ymid, xmid:]),
+               (actor_frames[:, ymid:, :xmid], critic_frames[:, ymid:, :xmid]),
+               (actor_frames[:, ymid:, xmid:], critic_frames[:, ymid:, xmid:])]
     # intensity defined by sum of values in frame region divided by sum of total values of full frame
     
     trace_labels = ['TopLeft', 'TopRight', 'BotLeft', 'BotRight']
     
-    cz = []
+    z = []
     for i, label in enumerate(trace_labels):
 #         trace = dict(
 #             x = list(range(0, actor_frames.shape[0] * 5, 5)),
@@ -748,18 +753,18 @@ def update_regions_bars(snapshot):
 #                 color = ('rgb(205, 12, 24)'),
 #                 width = 1)
 #         )
-        cz.append((targets[i][1]).sum((1,2)) / critic_tot)
+        z.append((targets[i][0]).sum((1,2)) / actor_tot)
     
-    cheatmap = go.Heatmap(
-        z = cz,
+    heatmap = go.Heatmap(
+        z = z,
         x = list(range(0, actor_frames.shape[0]*5, 5)),
         y = trace_labels,
         colorscale = 'Viridis',
         yaxis='y2')
     
     #data = [trace2, cheatmap]
-    data = [cheatmap]
-    layout = go.Layout(title = 'Critic Saliency Heatmap by Region',
+    data = [heatmap]
+    layout = go.Layout(title = 'Actor Saliency Heatmap by Region',
                        margin = dict(
                          l = 65,
                          r = 60,

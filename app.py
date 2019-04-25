@@ -87,15 +87,46 @@ app.layout = html.Div(children=[
         html.Div([ # column 2a
             html.Div([
                 dcc.Graph(id = 'gantt',
-                          style={'border':'1px solid black','height':'18em','display':'block'})
+                          style={'border':'1px solid black','height':'15em','display':'block'})
                     ], style = {'width':'60em'}),
              html.Div([
                 dcc.Graph(id = 'gantt2',
-                          style={'border':'1px solid black','height':'18em','display':'block'})
+                          style={'border':'1px solid black','height':'15em','display':'block'})
+                    ], style = {'width':'60em'}),
+            html.Div([
+                dcc.Graph(id = 'parallel-sal',
+                          style={'border':'1px solid black','height':'26em','display':'block'})
                     ], style = {'width':'60em'}),
             
-        ], style = {'position':'absolute','margin-left':'21em','border':'1px solid black', 'display':'inline-block'}),
-        html.Div([ # column 2
+        ], style = {'position':'absolute','margin-left':'20em','border':'1px solid black', 'display':'inline-block'}),
+        html.Div([ # column 2b
+            html.Div(["Select episodes"], style = {'word-wrap':'break-word'}),
+            html.Div([
+                dcc.Dropdown(
+                    id='gantt-select1',
+                    options=[{'label':x, 'value':x} for x in snapshots],
+                    value='90'
+                ),
+                dcc.Dropdown(
+                    id='gantt-select2',
+                    options=[{'label':x, 'value':x} for x in snapshots],
+                    value='60'
+                ),], style = {'padding-bottom':'25em'}),
+            html.Div(["Select episodes for parallel coordinates plot"], style = {'word-wrap':'break-word'}),
+            html.Div([
+                dcc.Dropdown(
+                    id='parallel-select1',
+                    options=[{'label':x, 'value':x} for x in snapshots],
+                    value='90'
+                ),
+                 dcc.Dropdown(
+                    id='parallel-select2',
+                    options=[{'label':x, 'value':x} for x in snapshots],
+                    value='60'
+                ),], ),
+            
+        ], style = {'position':'absolute','margin-left':'80em','width':'6em','border':'1px solid black', 'display':'inline-block'}),
+        html.Div([ # column 3
             html.Div([
                 dcc.Graph(id = 'actions',
                           style={'border':'1px solid black','height':'23em','display':'block'})
@@ -105,8 +136,8 @@ app.layout = html.Div(children=[
                          style = {'border':'1px solid black'})
             ])
             
-        ], style = {'position':'absolute','margin-left':'80em','border':'1px solid black', 'display':'inline-block'}),
-        html.Div([ # column 3
+        ], style = {'position':'absolute','margin-left':'100em','border':'1px solid black', 'display':'inline-block'}),
+        html.Div([ # column 4
             html.Div([
                 dcc.Graph(id = 'regions_bars',
                          style = {'border':'1px solid black', 'height':'23em'})
@@ -121,7 +152,7 @@ app.layout = html.Div(children=[
                          style = {'height':'23em'})
             ], style = {'display':'block','border':'1px solid black'})
             
-        ], style = {'border':'1px solid black', 'display':'inline-block','margin-left':'130em'})  
+        ], style = {'border':'1px solid black', 'display':'inline-block','margin-left':'140em'})  
     ], style = {'position':'relative'}),
     
 #     html.Div(children=[
@@ -571,7 +602,7 @@ def gantt_figures(snapshot):
         history1 = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
         rewards1 = history1['reward'].value
 
-        actions1ix = np.where(np.max(history1['outs'].value, axis = 1) > 0.9)
+        actions1ix = np.where(np.max(history1['outs'].value, axis = 1) > 0.7)
         actions1types = np.argmax(history1['outs'].value[actions1ix], axis=1)
 
         csaliency1 = history1['critic_sal'].value
@@ -591,9 +622,9 @@ def gantt_figures(snapshot):
             xvals = []
             yvals = np.tile(np.array([1,1,0,0]), len(region_vals))
             opacities = ['rgba(200, 68, 68,'+ str(i) + ')' for i in region_vals.flatten()]
-            
+            width = int(0.024 * len(rewards1))
             for ix in region_ix[0]:
-                xvals += [ix*5, ix*5+50, ix*5, ix*5+50]
+                xvals += [ix*5, ix*5 + width, ix*5, ix*5 + width]
             
             return xvals, yvals, dict(color= opacities, size = 14, line = dict(width = 1), symbol = 'square')
     
@@ -626,7 +657,7 @@ def gantt_figures(snapshot):
         cliponaxis= False
     )
 
-    fig = tools.make_subplots(rows=2, cols=1, vertical_spacing=0.05,
+    fig = tools.make_subplots(rows=2, cols=1, vertical_spacing=0.08,
                               shared_xaxes = True, shared_yaxes = True)
 
     
@@ -641,7 +672,7 @@ def gantt_figures(snapshot):
                              l = 50,
                              r = 40,
                              b = 35,
-                             t = 34,
+                             t = 20,
                              pad = 4
                            ))
 
@@ -650,7 +681,9 @@ def gantt_figures(snapshot):
                                     ticks='outside',
                                     tick0=0,
                                     dtick=2,
-                                  showticklabels=False)
+                                  showticklabels=False,
+                                  range = [0,5],
+                                  fixedrange = True)
     
     fig['layout']['yaxis2'].update(title='', range=[0, 7], autorange=False)
 
@@ -658,19 +691,144 @@ def gantt_figures(snapshot):
 
 @app.callback(
     Output(component_id='gantt', component_property='figure'),
-    [Input(component_id='null', component_property='children')]
+    [Input(component_id='gantt-select1', component_property='value')]
 )
-def update_gantt1(null):
-    fig = gantt_figures(90)
+def update_gantt1(snapshot):
+    fig = gantt_figures(snapshot)
     return fig
 
 @app.callback(
     Output(component_id='gantt2', component_property='figure'),
-    [Input(component_id='null', component_property='children')]
+    [Input(component_id='gantt-select2', component_property='value')]
 )
-def update_gantt2(null):
-    fig = gantt_figures(50)
+def update_gantt2(snapshot):
+    fig = gantt_figures(snapshot)
     return fig
+
+
+@app.callback(
+    Output(component_id='parallel-sal', component_property='figure'),
+    [Input(component_id='parallel-select1', component_property='value'),
+    Input(component_id='parallel-select2', component_property='value')]
+)
+def update_parallel_sal(snapshot1, snapshot2):
+    ymid, xmid = 80, 80
+    sal_thresh = 0.5
+    
+     # This version selects frames where the *regional* saliency is greater than some threshold of the max *regional* saliency for the episode, and values are max-normalized by region
+    def chart_data(snapshot):
+        history1 = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+        rewards1 = history1['reward'].value
+
+        csaliency1 = history1['critic_sal'].value
+        csaliency1regions = np.array([csaliency1[:, :ymid, :xmid], csaliency1[:, :ymid, xmid:], csaliency1[:, ymid:, :xmid], csaliency1[:, ymid:, xmid:]])
+        
+       #print(csaliency1regions.shape)
+        
+        
+        csaliency1regions_maxs = [region.sum((1,2)).max() for region in csaliency1regions]
+       
+        
+        #print( np.where((csaliency1regions[0] > sal_thresh*csaliency1regions_maxs[0])))
+    
+        csaliency1ix = np.where((csaliency1regions[0].sum((1,2)) > sal_thresh*csaliency1regions_maxs[0]) | 
+                                (csaliency1regions[1].sum((1,2)) > sal_thresh*csaliency1regions_maxs[1]) |
+                                (csaliency1regions[2].sum((1,2)) > sal_thresh*csaliency1regions_maxs[2]) |
+                                (csaliency1regions[3].sum((1,2)) > sal_thresh*csaliency1regions_maxs[3]))
+        
+        
+        
+        csaliency1frames = csaliency1regions[:, csaliency1ix]
+        #print(csaliency1frames.shape)
+        csaliency1frames = csaliency1frames.sum((3,4))
+        print(csaliency1frames.shape)
+        csaliency1frames = np.squeeze(csaliency1frames)
+        csaliency1frames = np.swapaxes(csaliency1frames, 0, 1)
+#         #print(csaliency1frames.shape)
+#         csaliency1frames = np.squeeze(csaliency1frames)
+#         csaliency1frames = np.swapaxes(csaliency1frames, 0, 1)
+        
+        #print(csaliency1frames.shape)
+        
+        for region_ix in range(csaliency1frames.shape[1]):
+            csaliency1frames[:, region_ix] /= csaliency1regions_maxs[region_ix]
+            
+         
+        
+        #csaliency1regions = np.divide(csaliency1regions, csaliency1regions_maxs)
+
+        return csaliency1ix[0]*5, csaliency1frames
+    
+        
+        # This version selects frames where the *total* saliency is greater than some threshold of the max *total* saliency for the episode
+        
+#     def chart_data(snapshot):
+#         history1 = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+#         rewards1 = history1['reward'].value
+
+#         csaliency1 = history1['critic_sal'].value
+#         csaliency1sums = csaliency1.sum((1,2))
+#         csaliency1max = csaliency1sums.max()
+        
+#         csaliency1ix = np.where(csaliency1sums > 0.4*csaliency1max)
+#         csaliency1frames = csaliency1[csaliency1ix]
+        
+#         csaliency1regions = np.array([[x[:ymid, :xmid].sum(), x[:ymid, xmid:].sum(), x[ymid:, :xmid].sum(), x[ymid:, xmid:].sum()] for x in csaliency1frames])
+        
+#         csaliency1regions /= csaliency1max
+
+#         return csaliency1ix[0]*5, csaliency1regions
+
+    ep1ix, ep1vals = chart_data(snapshot1)
+    ep2ix, ep2vals = chart_data(snapshot2)
+    print(ep1ix.shape,ep1vals.shape)
+
+    max_range = max(ep1ix.max(), ep2ix.max())
+
+    ep1data = np.hstack((ep1ix.reshape(-1, 1), ep1vals, np.repeat([int(snapshot1)], ep1ix.shape[0]).reshape(-1,1)))
+    ep2data = np.hstack((ep2ix.reshape(-1, 1), ep2vals, np.repeat([int(snapshot2)], ep2ix.shape[0]).reshape(-1,1)))
+    
+    print(ep1data.shape)
+    print(ep2data.shape)
+    
+    
+    all_data = np.vstack((ep1data, ep2data))
+    
+    print(all_data[0])
+    print(all_data.shape)
+    
+    trace = go.Parcoords(
+        line = dict(color = all_data[:, -1],
+                    showscale = True),
+        dimensions = list([
+            dict(range = [0, max_range],
+                label = 'Frame', values = all_data[:, 0]),
+            dict(range = [0,1],
+                label = 'TopLeft C-Sal', values = all_data[:,1]),
+            dict(range = [0,1],
+                label = 'TopRight C-Sal', values = all_data[:,2]),
+            dict(range = [0,1],
+                label = 'BotLeft C-Sal', values = all_data[:,3]),
+            dict(range = [0,1],
+                label = 'BotRight C-Sal', values = all_data[:,4]),
+            
+        ])
+    )
+
+    data = [ trace]
+    layout = go.Layout( margin = dict(
+                         l = 55,
+                         r = 50,
+                         b = 35,
+                         t = 35,
+                         pad = 4
+                       ),)
+    figure = go.Figure(data = data, layout = layout)
+
+    return figure
+
+    
+    
 
 
 @app.callback(

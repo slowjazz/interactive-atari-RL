@@ -14,11 +14,10 @@ import numpy as np
 import os, base64
 from io import BytesIO
 from scipy.stats import entropy
-import tables
 
-import torch # Unsure of Overhead
-from torch.autograd import Variable
-import torch.nn.functional as F
+#import torch # Unsure of Overhead
+#from torch.autograd import Variable
+#import torch.nn.functional as F
 
 import gym
 from visualize_atari import *
@@ -29,20 +28,21 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 server = app.server
 
+# Total training log
 log_data = pd.read_csv("baby-a3c/breakout-v4/log-model7-02-17-20-41.txt")
 log_data.columns = log_data.columns.str.replace(" ", "")
 
 
-#replays = tables.open_file("static/model_rollouts_5.h5",'r', driver="H5FD_CORE")
-
-
+# Load data into memory by default, otherwise delete 'driver='core'' to read from disk
 replays = h5py.File('static/model_rollouts_5.h5','r', driver='core')
 
+# list of epoch numbers we took (number * 500k is the number of frames trained at that point)
 snapshots = [1,19,30,40,50,60,70,80,90,100]
 
-
+# HTML Page layout
 app.layout = html.Div(children=[
     html.H5(children='Interactive Atari RL', id = 'null',style = {'padding-bottom':'0px', 'margin':'0'}),
+    # Top Row
     html.Div([
         html.Div([
             dcc.Graph(id = 'rewards-candlestick',
@@ -84,7 +84,7 @@ app.layout = html.Div(children=[
                                    style = {'max-width':'100%', 'max-height':'100%','height':'30em'}),
                            style = {'border':'1px solid black','width':'20em','height':'100%'}),
         ], style = {'position':'absolute','top':'8px','border':'1px solid black', 'display':'inline-block','width':'20em','border-bottom':'20em'}),
-        html.Div([ # column 2a
+        html.Div([ # column 2a (gantt and parallel coords plots)
             html.Div([
                 dcc.Graph(id = 'gantt',
                           style={'border':'1px solid black','height':'15em','display':'block'})
@@ -95,11 +95,11 @@ app.layout = html.Div(children=[
                     ], style = {'width':'60em'}),
             html.Div([
                 dcc.Graph(id = 'parallel-sal',
-                          style={'border':'1px solid black','height':'26em','display':'block'})
+                          style={'border':'1px solid black','height':'30em','display':'block'})
                     ], style = {'width':'60em'}),
             
         ], style = {'position':'absolute','margin-left':'20em','border':'1px solid black', 'display':'inline-block'}),
-        html.Div([ # column 2b
+        html.Div([ # column 2b (dropdowns)
             html.Div(["Select episodes"], style = {'word-wrap':'break-word'}),
             html.Div([
                 dcc.Dropdown(
@@ -111,7 +111,11 @@ app.layout = html.Div(children=[
                     id='gantt-select2',
                     options=[{'label':x, 'value':x} for x in snapshots],
                     value='60'
-                ),], style = {'padding-bottom':'25em'}),
+                ),], style = {'padding-bottom':'15em'}),
+            html.Div(["Update 'gantt's from parallel coords selection"], style = {'word-wrap':'break-word'}),
+            html.Div([
+                html.Button('Update', id='parallel-gantt-button', style={'display':'inline-block'}),
+            ], style = {'padding-bottom':'5em'}),
             html.Div(["Select episodes for parallel coordinates plot"], style = {'word-wrap':'break-word'}),
             html.Div([
                 dcc.Dropdown(
@@ -126,25 +130,11 @@ app.layout = html.Div(children=[
                 ),], ),
             
         ], style = {'position':'absolute','margin-left':'80em','width':'6em','border':'1px solid black', 'display':'inline-block'}),
-        html.Div([ # column 3
-            html.Div([
-                dcc.Graph(id = 'actions',
-                          style={'border':'1px solid black','height':'23em','display':'block'})
-                    ], ),
-            html.Div([
-                dcc.Graph(id = 'trajectory',
-                         style = {'border':'1px solid black'})
-            ])
-            
-        ], style = {'position':'absolute','margin-left':'100em','border':'1px solid black', 'display':'inline-block'}),
-        html.Div([ # column 4
+        
+        html.Div([ # column 3 (saliency by region heatmap and subplots)
             html.Div([
                 dcc.Graph(id = 'regions_bars',
                          style = {'border':'1px solid black', 'height':'23em'})
-            ]),
-            html.Div([
-                dcc.Graph(id = 'rewards-heatmap',
-                          style={'border':'1px solid black', 'height':'10em'})
             ]),
             
             html.Div([
@@ -152,31 +142,22 @@ app.layout = html.Div(children=[
                          style = {'height':'23em'})
             ], style = {'display':'block','border':'1px solid black'})
             
-        ], style = {'border':'1px solid black', 'display':'inline-block','margin-left':'140em'})  
-    ], style = {'position':'relative'}),
-    
-#     html.Div(children=[
-#                        dcc.Graph(
-#                            id='loss_over_eps',
-#                            figure={
-#                                'data': [
-#                                    #py.iplot(log_data['episodes'], log_data['mean-epr'])
-#                                    go.Scatter(x=log_data['frames'],
-#                                               y=log_data['run-loss'])
+        ], style = {'position':'absolute','border':'1px solid black', 'display':'inline-block','margin-left':'86em'}),
+        
+        html.Div([ # column 4 (action and trajectory plots)
+            html.Div([
+                dcc.Graph(id = 'actions',
+                          style={'border':'1px solid black','height':'23em'})
+                    ], ),
+            html.Div([
+                dcc.Graph(id = 'trajectory',
+                         style = {'border':'1px solid black'})
+            ])
+            
+        ], style = {'position':'absolute','margin-left':'135em','border':'1px solid black', 'display':'inline-block'}),
+    ], style = {'position':'relative', 'display':'block'}),
 
-#                                ],
-#                                'layout': {
-#                                    'xaxis': {'title': '500k Frames'},
-#                                    'yaxis': {'title': 'Loss'},
-#                                    'title': 'loss over episodes'
-#                                }
-#                            },
-#                            style={'float':'right','width':'50%'}
-#                        )
-#                        ]
-           
-#              ),
-    html.Div([
+    html.Div([ # Row 3 (sliders)
         html.Div([
             html.Div(id='frame-val'),
             dcc.Slider(id='frame-slider',
@@ -199,16 +180,19 @@ app.layout = html.Div(children=[
                
                   )
         ])
-    ], style={'padding-bottom':'20px'}),
-    html.Div([
+    ], style={'position':'relative','padding-bottom':'20px','margin-top':'65em'}),
+    html.Div([ # Row 4 (Action entropy (sort of legacy))
         dcc.Graph(id = 'action-entropy')
     ], style={'border':'1px solid black'}),
-    html.Div(50, id = 'current-frame')
+    html.Div(50, id = 'current-frame') # 'hidden' div to store current frame as state
            
 ])
 
+#====================== Begin callback functions, serving as the 'backend' to control all plotting =================#
+# Each callback function is decorated with the named HTML components used for inputs and outputs
+# https://dash.plot.ly/getting-started-part-2
 
-
+# Update written values on page with the frame slider
 @app.callback(
     [Output(component_id='frame-val', component_property='children'),
      Output(component_id='current-frame', component_property='children')],
@@ -217,6 +201,7 @@ app.layout = html.Div(children=[
 def update_frame_slider(input_value):
     return 'Frame number of episode: {}'.format(input_value), input_value
 
+# Update written values on page with the snapshot slider and mark unavailable values as red on the frame slider
 @app.callback(
     [Output(component_id='snapshot-val', component_property='children'),
      Output(component_id='frame-slider', component_property='marks')],
@@ -230,6 +215,7 @@ def update_snapshot_slider(snapshot):
             d[k] = {'label': k, 'style':{'color': '#f50'}}
     return 'Model iteration (500k frame increments): {}\n Ep Length {}'.format(snapshot, length), d
 
+# Update info box above frame display with current snapshot val
 @app.callback(
     Output(component_id='info-box-epoch', component_property='children'),
     [Input(component_id='snapshot-slider', component_property='value')]
@@ -237,6 +223,7 @@ def update_snapshot_slider(snapshot):
 def update_info_box(input_value):
     return f'Epoch selected: {input_value}'
 
+# Update info box above frame display with current frame val 
 @app.callback(
     Output(component_id='info-box-frame', component_property='children'),
     [Input(component_id='frame-slider', component_property='value')]
@@ -244,7 +231,7 @@ def update_info_box(input_value):
 def update_info_box_frame(input_value):
     return f'Frame selected: {input_value}'
 
-
+# Handle all links controlling snapshots by passing to the snapshot slider
 @app.callback(
     Output(component_id='snapshot-slider', component_property='value'),
     [Input(component_id='action-entropy', component_property = 'clickData'),
@@ -257,22 +244,24 @@ def update_link_snapshot(entropy_click, candle_click):
         return (candle_click['points'][0]['x'])
     return 50
 
+# Round to multiple of 5
 def myround(x, base=5):
     return base * round(x/base)
 
+# Handle all links controlling frame by passing to the frame slider
 @app.callback(
     Output(component_id='frame-slider', component_property='value'),
-    [Input(component_id='regions-subplots', component_property = 'clickData'),
+    [Input(component_id='regions-subplots', component_property = 'clickData'), 
      Input('actions', 'clickData'),
      Input('trajectory', 'clickData'),
      Input('regions_bars', 'clickData'),
-      Input('rewards-heatmap', 'clickData'),
+      
     Input(component_id='back-frame', component_property='n_clicks'),
     Input(component_id='forward-frame', component_property='n_clicks'),
     ],
     [State(component_id='current-frame', component_property='children')],
 )
-def update_link_frame(regions_click, actions_click, trajectory_click, bars_click, rewards_click, back_click, forward_click,cur_frame):
+def update_link_frame(regions_click, actions_click, trajectory_click, bars_click, back_click, forward_click,cur_frame):
     ctx = dash.callback_context
     # Check if buttons were pressed 
     for item in ctx.triggered:
@@ -280,6 +269,7 @@ def update_link_frame(regions_click, actions_click, trajectory_click, bars_click
             return max(0, cur_frame - 5)
         if 'forward-frame' in item['prop_id'] and item['value']:
             return cur_frame +5
+    # Else, check through inputs of specified plots
     if regions_click:
         return (regions_click['points'][0]['x'])
     if actions_click:
@@ -288,19 +278,19 @@ def update_link_frame(regions_click, actions_click, trajectory_click, bars_click
         return myround(trajectory_click['points'][0]['x'])
     if bars_click:
         return (bars_click['points'][0]['x'])
-    if rewards_click:
-        return myround(rewards_click['points'][0]['x'])
     return 50
 
-
+# Control rewards candlestick chart (row 1, col 1)
 @app.callback(
     Output(component_id='rewards-candlestick', component_property='figure'),
     [Input(component_id='null', component_property='children')]
 )
 def update_rewards_candlestick(start):
+    # Get data in increments of 40 (less noise)
     epr_xrange = (log_data['frames']/500e3).values[::40]
     epr_vals = log_data['mean-epr'].values[::40]
     rewards_candle_hovertext = [str(i) for i in epr_vals[:-1]]
+    # Derive plot with data
     trace = go.Ohlc(x = epr_xrange,
                     open = epr_vals[:-1],
                     high = epr_vals[:-1],
@@ -311,6 +301,7 @@ def update_rewards_candlestick(start):
                     name = 'Mean EPR')
     data = [trace]
     
+    # Also accumulate total saliency per episode for both types
     saliency_toplevel = []
     for s in snapshots:
         print(s)
@@ -324,6 +315,7 @@ def update_rewards_candlestick(start):
     
     saliency_toplevel = np.array(saliency_toplevel)
     
+    # Write saliency data into bars
     actor_bars = go.Bar(
         x = snapshots,
         y = saliency_toplevel[:,0],
@@ -379,6 +371,8 @@ def update_rewards_candlestick(start):
     figure = go.Figure(data = data, layout = layout)
     return figure
 
+# Control cumulative rewards plot (row 1, col 2)
+# Input is 'null' as it stays static 
 @app.callback(
     Output(component_id='all-cum-rewards', component_property='figure'),
     [Input(component_id='null', component_property='children')]
@@ -411,11 +405,13 @@ def update_all_cum_rewards(null):
     figure = go.Figure(data = data, layout= layout)
     return figure
 
+# Control action entropy graph at bottom (row 4, col 1)
 @app.callback(
     Output(component_id='action-entropy', component_property='figure'),
     [Input(component_id='null', component_property='children')]
 )
 def update_actions_entropy(null):
+    # Get list of available snapshots
     iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
     y_data = []
     ep_lengths = {}
@@ -423,6 +419,8 @@ def update_actions_entropy(null):
     y_segments = {i:[] for i in range(4)}
     avg_len = 20
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+    # For each iteration, get logits and scale on x-axis with respect to length of episode
+    # Logits are converted to moving averages of window size 10
     for i in iterations:
         softmax_logits = replays['models_model7-02-17-20-41/model.'+str(i)+'.tar/history/0/outs'].value
         y_data.append(softmax_logits)
@@ -432,17 +430,22 @@ def update_actions_entropy(null):
         for a in range(4):
             y_segments[a].append(np.bincount(ids,softmax_logits[:,a])/np.bincount(ids))
 
+    # Also get entropy data - entropy is calculated by action for the entire episode
     entropy_data = np.array([entropy(logits) for logits in y_data])
     softmax_data = np.vstack(y_data)
     
+    # Put stacked logits segments together
     x_range = np.hstack(x_range)
     for a in range(4):
         y_segments[a] = np.hstack(y_segments[a])
     
+    # Create plot
     ids = np.arange(len(softmax_data))//avg_len
     series = [entropy_data[:, i] for i in range(4)] 
     data = []
+    # Iterate by action type
     for i, t in enumerate(series):
+        # plot entropy as lines
         trace = go.Scatter(
                 y = t,
                 x = iterations,
@@ -450,10 +453,10 @@ def update_actions_entropy(null):
         )
         data.append(trace)
         
+        # Plot moving averaged logits as stacked lines
         averaged = np.bincount(ids,softmax_data[:,i])/np.bincount(ids)
         trace2 = dict(
             x = 101*np.arange(0, (len(softmax_data)/avg_len), 1/(len(softmax_data)/avg_len)),
-            #y = moving_average(softmax_data[:, i], 100),
             y = averaged,
             mode = 'lines',
             line = dict(width=0.5),
@@ -461,16 +464,6 @@ def update_actions_entropy(null):
             yaxis='y2',
             name = actions[i]
         )
-#         trace2 = dict(
-#                     x = x_range,
-#                     #y = moving_average(softmax_data[:, i], 100),
-#                     y = y_segments[i],
-#                     mode = 'lines',
-#                     line = dict(width=0.5),
-#                     stackgroup = 'one',
-#                     yaxis='y2',
-#                     name = actions[i]
-#                 )
         data.append(trace2)
     
     
@@ -489,7 +482,7 @@ def update_actions_entropy(null):
     figure = go.Figure(data = data, layout = layout)
     return figure
     
-
+# Control actions plot of stacked logits and cumulative reward per episode (row 1, column 4)
 @app.callback(
     Output(component_id='actions', component_property='figure'),
     [Input(component_id='snapshot-slider', component_property='value')]
@@ -498,6 +491,7 @@ def update_actions(snapshot):
     softmax_logits = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/outs'].value
     traces = []
     actions = ['NOOP', 'FIRE', 'RIGHT', 'LEFT']
+    # Just plot each logit for each frame
     for a in range(softmax_logits.shape[1]):
         trace = dict(
         x = list(range(0, softmax_logits.shape[0])),
@@ -510,6 +504,7 @@ def update_actions(snapshot):
     )
         traces.append(trace) 
     
+    # Also plot cumulative rewards by frame
     rewards = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/reward'].value
     reward_trace = dict(
         y = np.cumsum(rewards),
@@ -540,7 +535,7 @@ def update_actions(snapshot):
     figure = go.Figure(data = traces, layout= layout)
     return figure
 
-
+# Function from Greydanus to upscale saliency values into visible blots of blue/red
 def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
     S = fudge_factor * S / S.max()
     I = frame.astype('uint16')
@@ -548,6 +543,7 @@ def saliency_on_frame_abbr(S, frame, fudge_factor, sigma = 0, channel = 0):
     I = I.clip(1,255).astype('uint8')
     return I
 
+# Control frame display (row 2, col 1)
 @app.callback(
     Output(component_id='screen-ins', component_property='src'),
     [Input(component_id='current-frame', component_property='children'),
@@ -560,6 +556,7 @@ def update_frame_in_slider(frame, snapshot):
     ins = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0/ins'].value
     img = ins.copy()
     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+    # Get appropriate saliency values
     if frame > len(ins):
         img = np.zeros((210,160,3))
         actor = img.copy(); critic = img.copy()
@@ -568,95 +565,175 @@ def update_frame_in_slider(frame, snapshot):
         actor_frames = history['actor_sal'].value
         critic_frames = history['critic_sal'].value
         actor = actor_frames[frame]; critic=critic_frames[frame]
-        
+    # Overlay saliency on frame
     img = saliency_on_frame_abbr(actor, img, 500, 0, 2)
     img = saliency_on_frame_abbr(critic, img, 500, 0 , 0)
     
-    
+    # Save as base64 string
     buffer = BytesIO()
     plt.imsave(buffer, img)
-    #img = PIL.Image.fromarray(img) #.resize((int(img.shape[1]*0.6), int(img.shape[0]*0.6)))
-    #img.save(buffer, "PNG")
     img_str = base64.b64encode(buffer.getvalue()).decode()
-    #img_str = base64.b64encode(img.tobytes()).decode()
     
     return 'data:image/png;base64,{}'.format(img_str)
 
+# Helper func to fetch appropriate layout parameters for color, size, and border for an array of actions (0,1,2,3,2 etc) for 'gantt' plots
 def actions_to_marker(actions):
     action_colors = {0: "rgb(87, 137, 224)", 1:'rgb(247, 227, 116)', 2:'rgb(59, 229, 73)', 3:'rgb(232, 73, 64)'}
     colors = [action_colors[i] for i in actions]
     return dict(color = colors, size = 8, line = dict(width = 1))
-    if actions == 0: # NOOP
-        return dict(color="#444", line = dict(color='rgb(25,25,25)', width=1))
-    else:
-        return dict(color='rgb(24, 100, 205)', line = dict(color='rgb(25,25,25)', width=1))
 
-
-
-def gantt_figures(snapshot):
-    ymid, xmid = 80, 80
-
-    action_colors = {0: "#444", 1:'rgb(24, 100, 205)', 2:'rgb(24, 100, 205)', 3:'rgb(24, 100, 205)'}
+# Big function to generate 'gantt' plots (row 2, col 2)
+# Give a snapshot number and object for selected data in the parallel coords plot below
+# also take last arg to correct for zooming scale
+def gantt_figures(snapshot, parallelSelectedData, range_bounds=None):
+    ymid, xmid = 80, 80 # size in pixels of midpoints of saliency frames
+    sal_thresh = 0.5 # threshold for selecting saliency as percentage of max saliency in frame
+    action_thresh = 0.7 # threshold for selecting actions with softmax val greater than threshold
     
+    # Generate saliency boxes 
+    # This version selects frames where the *regional* saliency is greater than some threshold of the max *regional* saliency for the episode, and values are max-normalized by region
     def chart_data(snapshot):
         history1 = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
         rewards1 = history1['reward'].value
+        outs = history1['outs'].value
+        critic_sal = history1['critic_sal'].value
+        if range_bounds:
+            lower = int(range_bounds[0])
+            upper = int(range_bounds[1])
+            rewards = rewards[lower:upper]
+            outs = outs[lower:upper]
+            critic_sal = critic_sal[lower//5:upper//5]
+        
 
-        actions1ix = np.where(np.max(history1['outs'].value, axis = 1) > 0.7)
-        actions1types = np.argmax(history1['outs'].value[actions1ix], axis=1)
+        actions1ix = np.where(np.max(outs, axis = 1) > action_thresh)
+        actions1types = np.argmax(outs[actions1ix], axis=1)
 
-        csaliency1 = history1['critic_sal'].value
-        csaliency1sums = csaliency1.sum((1,2))
-        csaliency1max = csaliency1sums.max()
+        csaliency1 = critic_sal
+        csaliency1regions = np.array([csaliency1[:, :ymid, :xmid], csaliency1[:, :ymid, xmid:], csaliency1[:, ymid:, :xmid], csaliency1[:, ymid:, xmid:]])
+
+        csaliency1regions_maxs = [region.sum((1,2)).max() for region in csaliency1regions]
+
+        csaliency1ix = np.where((csaliency1regions[0].sum((1,2)) > sal_thresh*csaliency1regions_maxs[0]) | 
+                                (csaliency1regions[1].sum((1,2)) > sal_thresh*csaliency1regions_maxs[1]) |
+                                (csaliency1regions[2].sum((1,2)) > sal_thresh*csaliency1regions_maxs[2]) |
+                                (csaliency1regions[3].sum((1,2)) > sal_thresh*csaliency1regions_maxs[3]))
         
-        csaliency1ix = np.where(csaliency1sums > 0.3*csaliency1max)
-        csaliency1frames = csaliency1[csaliency1ix]
+        csaliency1frames = csaliency1regions[:, csaliency1ix]
+        csaliency1frames = csaliency1frames.sum((3,4))
+        csaliency1frames = np.squeeze(csaliency1frames)
+        csaliency1frames = np.swapaxes(csaliency1frames, 0, 1)
         
-        csaliency1regions = np.array([[x[:ymid, :xmid].sum(), x[:ymid, xmid:].sum(), x[ymid:, :xmid].sum(), x[ymid:, xmid:].sum()] for x in csaliency1frames])
+        for region_ix in range(csaliency1frames.shape[1]):
+            csaliency1frames[:, region_ix] /= csaliency1regions_maxs[region_ix]
         
-        csaliency1regions /= csaliency1max
+        # At this point, csaliency1ix is an array of frame numbers and csaliency1frames is accumulated saliency values by region
+        # The latter has shape N x 4, where N is the number of frames found that meet threshold and 4 is the number of regions
+      
+
+
+    ##### This version selects frames where the *total* saliency is greater than some threshold of the max *total* saliency for the episode
+
+    # def chart_data(snapshot):
+    #     history1 = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
+    #     rewards1 = history1['reward'].value
+
+    #     actions1ix = np.where(np.max(history1['outs'].value, axis = 1) > 0.7)
+    #     actions1types = np.argmax(history1['outs'].value[actions1ix], axis=1)
+
+    #     csaliency1 = history1['critic_sal'].value
+    #     csaliency1sums = csaliency1.sum((1,2))
+    #     csaliency1max = csaliency1sums.max()
+        
+    #     csaliency1ix = np.where(csaliency1sums > 0.3*csaliency1max)
+    #     csaliency1frames = csaliency1[csaliency1ix]
+        
+    #     csaliency1regions = np.array([[x[:ymid, :xmid].sum(), x[:ymid, xmid:].sum(), x[ymid:, :xmid].sum(), x[ymid:, xmid:].sum()] for x in csaliency1frames])
+        
+    #     csaliency1regions /= csaliency1max
     
         # convert n x n_regions array of saliency values to traces that look like the 2x2 saliency grids along a time line
         # example: we pass in n x [1,2,3,4] as values, where 1,2,3,4 are total saliency values of top left, top right, bot left, bot right regions
         def plot_region_dots(region_vals, region_ix):
-            xvals = []
+            xvals, selPoints = [], []
             yvals = np.tile(np.array([1,1,0,0]), len(region_vals))
             opacities = ['rgba(200, 68, 68,'+ str(i) + ')' for i in region_vals.flatten()]
             width = int(0.024 * len(rewards1))
-            for ix in region_ix[0]:
-                xvals += [ix*5, ix*5 + width, ix*5, ix*5 + width]
             
-            return xvals, yvals, dict(color= opacities, size = 14, line = dict(width = 1), symbol = 'square')
-    
-    
-   
-        t1infox, t1infoy, markers = plot_region_dots(csaliency1regions, csaliency1ix)
+            for i, ix in enumerate(region_ix[0]):
+                xvals += [ix*5, ix*5 + width, ix*5, ix*5 + width]
 
-        return (t1infox, t1infoy, markers), (list(range(len(rewards1))), rewards1), (actions1ix[0], rewards1[actions1ix], actions_to_marker(actions1types))
+                # Select points if they were highlighted in parallel coords
+                # Needed to parse through format of the event callback (was absolutely monstrous)
+                if parallelSelectedData:
+                    for dim in parallelSelectedData:
+                        if type(dim)==dict:
+                            for k, constraint_objs in dim.items():
+                                if k == 'dimensions[0].constraintrange': # only parse frame data
+                                    #print('constraint obj', constraint_objs)
+                                    if type(constraint_objs[0][0]) == list:
+                                        constraint_objs = constraint_objs[0]
+                                    for c in filter(lambda x: x != None, constraint_objs):
+                                        #print('constraint', c)
+                                        lower = c[0]
+                                        upper = c[1]
+                                        
+                                        if ix >= lower//5 and ix <= upper//5:
+                                            selPoints += [4*i, 4*i+1, 4*i+2, 4*i+3]
+            return xvals, yvals, dict(color= opacities, size = 14, line = dict(width = 1), symbol = 'square'), selPoints
+    
+        
+
+        t1infox, t1infoy, markers, selectedpointsInfo = plot_region_dots(csaliency1frames, csaliency1ix)
+
+        # Return all data for 'gantt' plots: rewards, actions, and saliency boxes
+        return (t1infox, t1infoy, markers, selectedpointsInfo), (list(range(len(rewards1))), rewards1), (actions1ix[0], rewards1[actions1ix], actions_to_marker(actions1types))
 
     trace1sal, trace1rewards, trace1actions = chart_data(snapshot)
-    
-    trace1info = go.Scatter(
-        mode = 'markers',
-        x = trace1sal[0],
-        y = trace1sal[1],
-        marker = trace1sal[2],
-        cliponaxis= False
-    )
+    # print(trace1sal[3])
+    # print(trace1sal[0])
+
+    # Chart all data
+
+    if not trace1sal[3]: # if no selected data
+        trace1info = go.Scatter(
+            mode = 'markers',
+            x = trace1sal[0],
+            y = trace1sal[1],
+            marker = trace1sal[2],
+            cliponaxis= False,
+        )
+
+    else:
+        trace1info = go.Scatter(
+            mode = 'markers',
+            x = trace1sal[0],
+            y = trace1sal[1],
+            selectedpoints = trace1sal[3],
+            marker = trace1sal[2],
+            cliponaxis= False,
+            unselected = dict(
+                marker = dict(color = 'rgba(68, 68, 68,0.1)'),
+                
+            ),
+            
+        )
     
     trace1 = go.Scatter(
         x = trace1rewards[0],
         y = trace1rewards[1],
+        #selectedpoints = selectedpointsRewards,
     )
     trace1actions = go.Scatter(
         mode = 'markers',
         x = trace1actions[0],
         y = trace1actions[1],
+        #selectedpoints = selectedpointsActions,
         opacity = 1,
         marker = trace1actions[2],
         cliponaxis= False
     )
 
+    # Make subplots skeleton
     fig = tools.make_subplots(rows=2, cols=1, vertical_spacing=0.08,
                               shared_xaxes = True, shared_yaxes = True)
 
@@ -665,18 +742,18 @@ def gantt_figures(snapshot):
     fig.append_trace(trace1, 2, 1)
     fig.append_trace(trace1actions, 2, 1)    
 
-    fig['layout'].update(title='"Gantt"', 
+    # update layouts to control scale, axis labels
+    fig['layout'].update(title='"Gantt" chart of epoch ep '+str(snapshot), 
                          showlegend=False,
                          clickmode = 'event+select',
                          margin = dict(
                              l = 50,
                              r = 40,
                              b = 35,
-                             t = 20,
+                             t = 25,
                              pad = 4
                            ))
 
-    #fig['layout']['xaxis2'].update(anchor='x1')
     fig['layout']['yaxis1'].update(tickmode='linear',
                                     ticks='outside',
                                     tick0=0,
@@ -689,74 +766,64 @@ def gantt_figures(snapshot):
 
     return fig
 
-@app.callback(
-    Output(component_id='gantt', component_property='figure'),
-    [Input(component_id='gantt-select1', component_property='value')]
-)
-def update_gantt1(snapshot):
-    fig = gantt_figures(snapshot)
-    return fig
 
+# Control 'gantt' charts (row 2, col 2) 
 @app.callback(
-    Output(component_id='gantt2', component_property='figure'),
-    [Input(component_id='gantt-select2', component_property='value')]
+    [Output(component_id='gantt', component_property='figure'),
+    Output(component_id='gantt2', component_property='figure'),],
+    [Input(component_id='gantt-select1', component_property='value'),
+    Input(component_id='gantt-select2', component_property='value'),
+    Input(component_id='parallel-sal', component_property='restyleData'),
+    Input(component_id='gantt', component_property='relayoutData')] # listen for parallel coords linking
 )
-def update_gantt2(snapshot):
-    fig = gantt_figures(snapshot)
-    return fig
+def update_gantts(snapshot1, snapshot2, parallelSelectedData, relayout):
+    if not snapshot1: # default values on page load
+        snapshot1 = 90
+    if not snapshot2:
+        snapshot2 = 60
+    if parallelSelectedData:
+        print(parallelSelectedData)
+    range_bounds = None
+    if relayout and 'xaxis.range[0]' in relayout:
+        print(relayout)
+        range_bounds = [relayout['xaxis.range[0]'], relayout['xaxis.range[1]']]
+    fig1 = gantt_figures(snapshot1, parallelSelectedData, range_bounds)
+    fig2 = gantt_figures(snapshot2, parallelSelectedData, range_bounds)
+    return fig1, fig2
 
 
 @app.callback(
     Output(component_id='parallel-sal', component_property='figure'),
     [Input(component_id='parallel-select1', component_property='value'),
-    Input(component_id='parallel-select2', component_property='value')]
+    Input(component_id='parallel-select2', component_property='value')],
 )
 def update_parallel_sal(snapshot1, snapshot2):
     ymid, xmid = 80, 80
-    sal_thresh = 0.5
+    sal_thresh = 0.5 # threshold for selecting saliency as percentage of max saliency in frame
     
-     # This version selects frames where the *regional* saliency is greater than some threshold of the max *regional* saliency for the episode, and values are max-normalized by region
+    # This version selects frames where the *regional* saliency is greater than some threshold of the max *regional* saliency for the episode, and values are max-normalized by region
     def chart_data(snapshot):
         history1 = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
         rewards1 = history1['reward'].value
 
         csaliency1 = history1['critic_sal'].value
         csaliency1regions = np.array([csaliency1[:, :ymid, :xmid], csaliency1[:, :ymid, xmid:], csaliency1[:, ymid:, :xmid], csaliency1[:, ymid:, xmid:]])
-        
-       #print(csaliency1regions.shape)
-        
-        
+
         csaliency1regions_maxs = [region.sum((1,2)).max() for region in csaliency1regions]
-       
-        
-        #print( np.where((csaliency1regions[0] > sal_thresh*csaliency1regions_maxs[0])))
-    
+
         csaliency1ix = np.where((csaliency1regions[0].sum((1,2)) > sal_thresh*csaliency1regions_maxs[0]) | 
                                 (csaliency1regions[1].sum((1,2)) > sal_thresh*csaliency1regions_maxs[1]) |
                                 (csaliency1regions[2].sum((1,2)) > sal_thresh*csaliency1regions_maxs[2]) |
                                 (csaliency1regions[3].sum((1,2)) > sal_thresh*csaliency1regions_maxs[3]))
         
-        
-        
         csaliency1frames = csaliency1regions[:, csaliency1ix]
-        #print(csaliency1frames.shape)
         csaliency1frames = csaliency1frames.sum((3,4))
-        print(csaliency1frames.shape)
         csaliency1frames = np.squeeze(csaliency1frames)
         csaliency1frames = np.swapaxes(csaliency1frames, 0, 1)
-#         #print(csaliency1frames.shape)
-#         csaliency1frames = np.squeeze(csaliency1frames)
-#         csaliency1frames = np.swapaxes(csaliency1frames, 0, 1)
-        
-        #print(csaliency1frames.shape)
         
         for region_ix in range(csaliency1frames.shape[1]):
             csaliency1frames[:, region_ix] /= csaliency1regions_maxs[region_ix]
             
-         
-        
-        #csaliency1regions = np.divide(csaliency1regions, csaliency1regions_maxs)
-
         return csaliency1ix[0]*5, csaliency1frames
     
         
@@ -816,13 +883,16 @@ def update_parallel_sal(snapshot1, snapshot2):
     )
 
     data = [ trace]
-    layout = go.Layout( margin = dict(
+    layout = go.Layout( title = "Frames with by-region saliency > "+str(sal_thresh) + " of max",
+                       margin = dict(
                          l = 55,
                          r = 50,
                          b = 35,
-                         t = 35,
+                         t = 80,
                          pad = 4
-                       ),)
+                       ),
+                       
+                      )
     figure = go.Figure(data = data, layout = layout)
 
     return figure
@@ -1135,42 +1205,33 @@ def update_trajectory(snapshot):
     fig = go.Figure(data = data, layout = layout)
     return fig
     
-@app.callback(
-    Output(component_id='rewards-heatmap', component_property='figure'),
-    [Input(component_id='snapshot-slider', component_property='value')]
-)
-def update_rewards_heatmap(snapshot):
-    history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
-    rewards = history['reward'].value
-    trace = go.Scatter(
-        x = list(range(len(rewards))),
-        y = rewards,
-    )
-    data = [trace]
     
-    layout = go.Layout(title = 'Rewards',
-                      margin = dict(
-                             l = 50,
-                             r = 40,
-                             b = 20,
-                             t = 20,
-                             pad = 4
-                           ))
-    fig = go.Figure(data = data, layout = layout)
-    return fig
-            
 
-# def update_rewards_cum(snapshot):
+
+# @app.callback(
+#     Output(component_id='rewards-heatmap', component_property='figure'),
+#     [Input(component_id='snapshot-slider', component_property='value')]
+# )
+# def update_rewards_heatmap(snapshot):
 #     history = replays['models_model7-02-17-20-41/model.'+str(snapshot)+'.tar/history/0']
-#     rewards = history['reward']
-#     trace2 = go.Bar(
-#     x=list(range(len(rewards))),
-#     y= -np.cumsum(rewards)
+#     rewards = history['reward'].value
+#     trace = go.Scatter(
+#         x = list(range(len(rewards))),
+#         y = rewards,
 #     )
-#     data = [trace2]
-#     layout = go.Layout(bargap = 0, title = 'Cumulative Episode Reward')
+#     data = [trace]
+    
+#     layout = go.Layout(title = 'Rewards',
+#                       margin = dict(
+#                              l = 50,
+#                              r = 40,
+#                              b = 20,
+#                              t = 20,
+#                              pad = 4
+#                            ))
 #     fig = go.Figure(data = data, layout = layout)
 #     return fig
+            
     
 
 if __name__ == '__main__':

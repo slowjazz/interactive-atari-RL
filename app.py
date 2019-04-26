@@ -100,7 +100,7 @@ app.layout = html.Div(children=[
             
         ], style = {'position':'absolute','margin-left':'20em','border':'1px solid black', 'display':'inline-block'}),
         html.Div([ # column 2b (dropdowns)
-            html.Div(["Select episodes"], style = {'word-wrap':'break-word'}),
+            html.Div(["Select episodes for 'gantt' and parallel coordinates plots"], style = {'word-wrap':'break-word'}),
             html.Div([
                 dcc.Dropdown(
                     id='gantt-select1',
@@ -112,22 +112,11 @@ app.layout = html.Div(children=[
                     options=[{'label':x, 'value':x} for x in snapshots],
                     value='60'
                 ),], style = {'padding-bottom':'15em'}),
-            html.Div(["Update 'gantt's from parallel coords selection"], style = {'word-wrap':'break-word'}),
+            #html.Div(["Update 'gantt's from parallel coords selection"], style = {'word-wrap':'break-word'}),
             html.Div([
                 html.Button('Update', id='parallel-gantt-button', style={'display':'inline-block'}),
             ], style = {'padding-bottom':'5em'}),
-            html.Div(["Select episodes for parallel coordinates plot"], style = {'word-wrap':'break-word'}),
-            html.Div([
-                dcc.Dropdown(
-                    id='parallel-select1',
-                    options=[{'label':x, 'value':x} for x in snapshots],
-                    value='90'
-                ),
-                 dcc.Dropdown(
-                    id='parallel-select2',
-                    options=[{'label':x, 'value':x} for x in snapshots],
-                    value='60'
-                ),], ),
+            
             
         ], style = {'position':'absolute','margin-left':'80em','width':'6em','border':'1px solid black', 'display':'inline-block'}),
         
@@ -411,6 +400,7 @@ def update_all_cum_rewards(null):
     [Input(component_id='null', component_property='children')]
 )
 def update_actions_entropy(null):
+    return go.Figure() # turn off 
     # Get list of available snapshots
     iterations = sorted([int(x.split('.')[1]) for x in list(replays['models_model7-02-17-20-41'].keys())])
     y_data = []
@@ -597,10 +587,11 @@ def gantt_figures(snapshot, parallelSelectedData, range_bounds=None):
         rewards1 = history1['reward'].value
         outs = history1['outs'].value
         critic_sal = history1['critic_sal'].value
+        lower, upper = 0, len(rewards1)
         if range_bounds:
             lower = int(range_bounds[0])
             upper = int(range_bounds[1])
-            rewards = rewards[lower:upper]
+            rewards1 = rewards1[lower:upper]
             outs = outs[lower:upper]
             critic_sal = critic_sal[lower//5:upper//5]
         
@@ -657,7 +648,7 @@ def gantt_figures(snapshot, parallelSelectedData, range_bounds=None):
             xvals, selPoints = [], []
             yvals = np.tile(np.array([1,1,0,0]), len(region_vals))
             opacities = ['rgba(200, 68, 68,'+ str(i) + ')' for i in region_vals.flatten()]
-            width = int(0.024 * len(rewards1))
+            width = int(0.024 * len(rewards1)) # scale saliency marks to what user currently sees (to accoutn for zooming)
             
             for i, ix in enumerate(region_ix[0]):
                 xvals += [ix*5, ix*5 + width, ix*5, ix*5 + width]
@@ -686,7 +677,7 @@ def gantt_figures(snapshot, parallelSelectedData, range_bounds=None):
         t1infox, t1infoy, markers, selectedpointsInfo = plot_region_dots(csaliency1frames, csaliency1ix)
 
         # Return all data for 'gantt' plots: rewards, actions, and saliency boxes
-        return (t1infox, t1infoy, markers, selectedpointsInfo), (list(range(len(rewards1))), rewards1), (actions1ix[0], rewards1[actions1ix], actions_to_marker(actions1types))
+        return (np.array(t1infox) + lower, t1infoy, markers, selectedpointsInfo), (list(range(lower, upper)), rewards1), (actions1ix[0] + lower, rewards1[actions1ix], actions_to_marker(actions1types))
 
     trace1sal, trace1rewards, trace1actions = chart_data(snapshot)
     # print(trace1sal[3])
@@ -774,28 +765,32 @@ def gantt_figures(snapshot, parallelSelectedData, range_bounds=None):
     [Input(component_id='gantt-select1', component_property='value'),
     Input(component_id='gantt-select2', component_property='value'),
     Input(component_id='parallel-sal', component_property='restyleData'),
-    Input(component_id='gantt', component_property='relayoutData')] # listen for parallel coords linking
+    Input(component_id='gantt', component_property='relayoutData'),
+    Input(component_id='gantt2', component_property='relayoutData')] # listen for parallel coords linking
 )
-def update_gantts(snapshot1, snapshot2, parallelSelectedData, relayout):
+def update_gantts(snapshot1, snapshot2, parallelSelectedData, relayout1, relayout2):
     if not snapshot1: # default values on page load
         snapshot1 = 90
     if not snapshot2:
         snapshot2 = 60
-    if parallelSelectedData:
-        print(parallelSelectedData)
-    range_bounds = None
-    if relayout and 'xaxis.range[0]' in relayout:
-        print(relayout)
-        range_bounds = [relayout['xaxis.range[0]'], relayout['xaxis.range[1]']]
+
+    range_bounds, range_bounds2 = None, None
+
+    # If zoomed, receive a callback to properly scale the 2x2 saliency marks
+    if relayout1 and 'xaxis.range[0]' in relayout1:
+        range_bounds = [relayout1['xaxis.range[0]'], relayout1['xaxis.range[1]']]
+    if relayout2 and 'xaxis.range[0]' in relayout2:
+        range_bounds2 = [relayout['xaxis.range[0]'], relayout['xaxis.range[1]']]
+    
     fig1 = gantt_figures(snapshot1, parallelSelectedData, range_bounds)
-    fig2 = gantt_figures(snapshot2, parallelSelectedData, range_bounds)
+    fig2 = gantt_figures(snapshot2, parallelSelectedData, range_bounds2)
     return fig1, fig2
 
 
 @app.callback(
     Output(component_id='parallel-sal', component_property='figure'),
-    [Input(component_id='parallel-select1', component_property='value'),
-    Input(component_id='parallel-select2', component_property='value')],
+    [Input(component_id='gantt-select1', component_property='value'),
+    Input(component_id='gantt-select2', component_property='value')],
 )
 def update_parallel_sal(snapshot1, snapshot2):
     ymid, xmid = 80, 80

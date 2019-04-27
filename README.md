@@ -3,7 +3,9 @@
 
 This project intends to address challenges with understanding complex reinforcement learning agents on complicated tasks like Atari games through visual aids. An A3C model is trained to play Breakout and the results are analyzed with an interactive dashboard built on Dash. 
 
-#### Baseline 
+![Main View](assets/main.png)
+
+### Baseline 
 The baseline work for this project comes from Sam Greydanus' paper [*Visualizing and Understanding Atari Agents*](https://arxiv.org/abs/1711.00138). 
 
 **Instructions:**

@@ -10,7 +10,9 @@ The baseline work for this project comes from Sam Greydanus' paper [*Visualizing
 
 **Instructions:**
 __To run the dashboard:__
+Download the [Generated Data](https://drive.google.com/file/d/1V_J2HgOi3roHSsfagtqdQEC1cJK-Bnxv/view?usp=sharing) and place it into a folder called `static`. 
 ```
+mkdir static
 python app.py # localhost:8050
 ```
 
@@ -33,7 +35,6 @@ The dashboard operates off of two files: a training log file (csv) and an h5 fil
 - output (probability over actions)
 - Actor/Critic saliency 
 ```
-mkdir static
 cd visualize_atari
 python generate_data.py
 ```
